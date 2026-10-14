@@ -102,9 +102,17 @@ sudo make install
 You need PyGObject, GTK 4 and libadwaita (`python3-gi`, `gir1.2-adw-1` on
 Debian/Ubuntu; `python3-gobject`, `libadwaita` on Fedora).
 
-`make install` installs the service, the app, the CLI, the udev rule and the
-GNOME extension. It then reloads udev. To remove everything, run
-`sudo make uninstall`.
+`make install` installs everything. To install only some parts:
+
+| Command | Installs | Needs |
+|---------|----------|-------|
+| `sudo make install-cli` | `lamplight` command and udev rule | Python 3.9+ |
+| `sudo make install-service` | CLI + background service | + PyGObject |
+| `sudo make install-app` | service + settings app | + GTK 4, libadwaita |
+| `sudo make install-extension` | service + GNOME Quick Settings tile | + GNOME Shell 48–51 |
+
+The app and the tile both drive the same service, so you can use either or
+both. To remove everything, run `sudo make uninstall`.
 
 After installing, log out and back in once. The service starts with your
 session, and **Lamplight** appears in your app list.
@@ -133,6 +141,11 @@ lamplight off
 | `-d DIRECTION` | `right` `left` `down` `up` `out` `in`; `cw` `ccw` for wheel |
 
 Animated modes run until you press Ctrl+C.
+
+If the background service is running, it owns the lighting and will repaint
+over a CLI command during animated effects. Stop it first with
+`systemctl --user stop lamplight`, or change settings through `gsettings`
+(see below).
 
 ## Troubleshooting
 
@@ -212,6 +225,11 @@ interface:
 
 Lamplight adds animated effects with directions, a GNOME Quick Settings tile,
 accent-color sync, and screen-off handling, for any LampArray device.
+
+## Contributing
+
+See [CONTRIBUTING.md](CONTRIBUTING.md). Device reports are the most useful
+contribution.
 
 ## License
 

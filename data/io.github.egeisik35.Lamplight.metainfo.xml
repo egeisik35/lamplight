@@ -1,0 +1,47 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<component type="desktop-application">
+  <id>io.github.egeisik35.Lamplight</id>
+  <metadata_license>CC0-1.0</metadata_license>
+  <project_license>MIT</project_license>
+  <name>Lamplight</name>
+  <summary>Set keyboard RGB colors and effects</summary>
+  <developer id="io.github.egeisik35">
+    <name>egeisik35</name>
+  </developer>
+  <description>
+    <p>
+      Lamplight controls the RGB lighting of keyboards and devices that support
+      Windows Dynamic Lighting (HID LampArray), such as recent ASUS Vivobook laptops.
+    </p>
+    <ul>
+      <li>Solid color, accent color, breathing, color cycle, rainbow, wave, wheel and gradient effects</li>
+      <li>Brightness, speed and direction controls with a live preview</li>
+      <li>Lights turn off with the screen and come back after suspend</li>
+      <li>A background service keeps effects running after the app closes</li>
+    </ul>
+  </description>
+  <launchable type="desktop-id">io.github.egeisik35.Lamplight.desktop</launchable>
+  <url type="homepage">https://github.com/egeisik35/lamplight</url>
+  <url type="bugtracker">https://github.com/egeisik35/lamplight/issues</url>
+  <provides>
+    <binary>lamplight</binary>
+    <binary>lamplight-app</binary>
+  </provides>
+  <supports>
+    <control>pointing</control>
+    <control>keyboard</control>
+  </supports>
+  <content_rating type="oars-1.1"/>
+  <releases>
+    <release version="0.1.1" date="2026-10-15">
+      <description>
+        <p>Install only the parts you need, software center metadata, and documentation updates.</p>
+      </description>
+    </release>
+    <release version="0.1.0" date="2026-10-15">
+      <description>
+        <p>First release.</p>
+      </description>
+    </release>
+  </releases>
+</component>

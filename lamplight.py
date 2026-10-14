@@ -16,7 +16,7 @@ import struct
 import sys
 import time
 
-__version__ = '0.1.0'
+__version__ = '0.1.1'
 
 LIGHTING_PAGE = 0x59
 REPORTS = {  # LampArray collection usages
