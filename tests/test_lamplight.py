@@ -145,6 +145,16 @@ def test_settings_state():
     assert lamplight.settings_state(FakeSettings())['balance'] == (1.0, 1.0, 0.6)
 
 
+def test_brightness_split_between_firmware_level_and_color():
+    for b in (0.0, 0.2, 1 / 3, 0.5, 0.8, 1.0):
+        level = lamplight.hardware_level(b, 3)
+        scale = lamplight.color_scale(b, level, 3)
+        assert 0 <= level <= 3 and 0 <= scale <= 1
+        assert abs(level / 3 * scale - b) < 1e-9, b
+    assert lamplight.hardware_level(1 / 3, 3) == 1  # exact steps need no extra level
+    assert lamplight.color_scale(0.5, 3, 3) == 0.5  # Fn keys set full, slider at half
+
+
 def test_white_balance_scales_channels():
     dev = FakeArray(count=1)
     dev.reports['control'] = (0x46, 2)

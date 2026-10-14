@@ -43,6 +43,11 @@
   </screenshots>
   <content_rating type="oars-1.1"/>
   <releases>
+    <release version="0.1.3" date="2026-10-15">
+      <description>
+        <p>The brightness slider stays in sync with the laptop's keyboard backlight keys and GNOME's keyboard brightness.</p>
+      </description>
+    </release>
     <release version="0.1.2" date="2026-10-15">
       <description>
         <p>Colors closer to the screen: gamma correction and white-balance calibration. The Quick Settings menu scrolls instead of running off small screens.</p>

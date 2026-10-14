@@ -27,6 +27,8 @@ count and lamp positions from the device itself, with no per-model table.
   inward; clockwise or counterclockwise for wheel), like Windows
 - Turns the lights off while the screen is off or locked, and restores them
   after suspend
+- On laptops, the brightness slider stays in sync with the Fn backlight keys
+  and GNOME's keyboard brightness
 - Hides itself on computers without a LampArray device
 - No root needed at runtime; a udev rule grants access only to LampArray devices
 - Works on any desktop: a small user service applies the settings, so effects

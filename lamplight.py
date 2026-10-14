@@ -16,7 +16,7 @@ import struct
 import sys
 import time
 
-__version__ = '0.1.2'
+__version__ = '0.1.3'
 
 LIGHTING_PAGE = 0x59
 REPORTS = {  # LampArray collection usages
@@ -312,6 +312,16 @@ def settings_state(settings, accent=None, screen_off=False):
                       'gamma': settings.get_double('gamma')})
 
 
+def hardware_level(brightness, max_level):
+    """Backlight level (Fn keys / UPower) needed to reach a 0..1 brightness."""
+    return math.ceil(round(brightness * max_level, 6))
+
+
+def color_scale(brightness, level, max_level):
+    """Color multiplier so that level/max * scale == brightness."""
+    return min(1.0, brightness * max_level / level) if level else brightness
+
+
 class Service:
     def __init__(self):
         from gi.repository import Gio, GLib
@@ -322,7 +332,19 @@ class Service:
                           if schema and schema.has_key('accent-color') else None)
         self.devices, self.screen_off, self.timer = [], False, 0
 
-        self.settings.connect('changed', lambda _s, key: key != 'status' and self.update())
+        self.settings.connect('changed', self.on_setting)
+        self.backlight, self.max_level, self.level = None, 0, 0
+        try:
+            # Laptop keyboards also have a firmware backlight level (Fn keys,
+            # GNOME's Keyboard tile). Keep it and our slider in sync.
+            self.backlight = Gio.DBusProxy.new_for_bus_sync(
+                Gio.BusType.SYSTEM, Gio.DBusProxyFlags.NONE, None, 'org.freedesktop.UPower',
+                '/org/freedesktop/UPower/KbdBacklight', 'org.freedesktop.UPower.KbdBacklight', None)
+            self.max_level = self.backlight.call_sync('GetMaxBrightness', None, 0, -1, None).unpack()[0]
+            self.backlight.connect('g-signal', self.on_backlight)
+            self.on_level(self.backlight.call_sync('GetBrightness', None, 0, -1, None).unpack()[0])
+        except Exception:  # no UPower or no firmware backlight: our slider alone
+            self.backlight, self.max_level = None, 0
         if self.interface:
             self.interface.connect('changed::accent-color', lambda *_: self.update())
         session = Gio.bus_get_sync(Gio.BusType.SESSION)
@@ -336,6 +358,30 @@ class Service:
         # people plug lighting devices in and out often.
         GLib.timeout_add_seconds(10, self.rescan_if_missing)
         self.rescan()
+
+    def on_setting(self, _settings, key):
+        if key == 'status':
+            return
+        if key == 'brightness' and self.max_level:
+            level = hardware_level(self.settings.get_double('brightness'), self.max_level)
+            if level != self.level:
+                self.level = level
+                self.backlight.call('SetBrightness', self.GLib.Variant('(i)', (level,)), 0, -1, None)
+        self.update()
+
+    def on_backlight(self, _proxy, _sender, signal, params):
+        if signal == 'BrightnessChanged':
+            self.on_level(params.unpack()[0])
+
+    def on_level(self, level):
+        """Firmware level changed (Fn keys, GNOME tile, or our own request)."""
+        self.level = level
+        # ponytail: GNOME's idle dimming also lands here, so a fine slider
+        # value like 0.8 can round up to the full level after idle.
+        if hardware_level(self.settings.get_double('brightness'), self.max_level) != level:
+            self.settings.set_double('brightness', level / self.max_level)
+        else:
+            self.update()
 
     def set_status(self, status):
         if self.settings.get_string('status') != status:
@@ -378,6 +424,9 @@ class Service:
         accent = self.interface.get_string('accent-color') if self.interface else None
         try:
             self.state = settings_state(self.settings, accent, self.screen_off)
+            if self.max_level:  # the firmware level already dims; scale the rest
+                self.state['brightness'] = color_scale(
+                    self.state['brightness'], self.level, self.max_level)
         except ValueError as e:
             print(f'lamplight: bad settings: {e}', file=sys.stderr, flush=True)
             return
