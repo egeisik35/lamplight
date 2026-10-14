@@ -28,7 +28,21 @@ const MODES = [
 const USES_COLOR = new Set(['solid', 'breathe', 'wave', 'gradient']);
 const USES_COLOR2 = new Set(['breathe', 'wave', 'gradient']);
 const ANIMATED = new Set(['breathe', 'cycle', 'rainbow', 'wave', 'wheel']);
-const DIRECTIONAL = new Set(['cycle', 'rainbow', 'wave', 'wheel']);
+const SPATIAL = [['right', 'Right'], ['left', 'Left'], ['down', 'Down'], ['up', 'Up'],
+    ['out', 'Outward'], ['in', 'Inward']];
+const DIRECTIONS = {
+    cycle: [['right', 'Forward'], ['left', 'Reverse']],
+    rainbow: SPATIAL,
+    wave: SPATIAL,
+    gradient: SPATIAL,
+    wheel: [['cw', 'Clockwise'], ['ccw', 'Counterclockwise']],
+};
+
+// The stored direction is shared by all effects; fall back per effect.
+const effectiveDirection = (mode, dir) => {
+    const options = DIRECTIONS[mode];
+    return !options || options.some(([d]) => d === dir) ? dir : options[0][0];
+};
 
 const SWATCHES = ['ff0000', 'ff5500', 'ffcc00', '00ff00', '00ffff', '0000ff', '8000ff', 'ff2090', 'ffffff'];
 
@@ -99,18 +113,20 @@ class ColorRow extends PopupMenu.PopupBaseMenuItem {
 const LightingToggle = GObject.registerClass(
 class LightingToggle extends QuickMenuToggle {
     constructor(ext) {
-        super({title: 'Keyboard Light', iconName: 'keyboard-brightness-symbolic', toggleMode: true});
+        super({title: 'Lighting', iconName: 'keyboard-brightness-symbolic', toggleMode: true});
         this._ext = ext;
         const s = ext.settings;
         s.bind('enabled', this, 'checked', Gio.SettingsBindFlags.DEFAULT);
 
         this.menu.setHeader('keyboard-brightness-symbolic', 'Lighting');
 
+        // Effects and directions sit in collapsed submenus so the menu fits
+        // on small screens.
+        this._modeMenu = new PopupMenu.PopupSubMenuMenuItem('', false);
         this._modeItems = new Map();
         for (const [mode, label] of MODES)
-            this._modeItems.set(mode, this.menu.addAction(label, () => this._set('mode', mode)));
-
-        this.menu.addMenuItem(new PopupMenu.PopupSeparatorMenuItem());
+            this._modeItems.set(mode, this._modeMenu.menu.addAction(label, () => this._set('mode', mode)));
+        this.menu.addMenuItem(this._modeMenu);
 
         this._color = new ColorRow('Color', SWATCHES,
             hex => this._pickColor('color', hex), () => this._customColor('color'));
@@ -133,9 +149,13 @@ class LightingToggle extends QuickMenuToggle {
         });
         this.menu.addMenuItem(this._speed);
 
-        this._reverse = new PopupMenu.PopupSwitchMenuItem('Reverse direction', false);
-        this._reverse.connect('toggled', (_i, state) => s.set_boolean('reverse', state));
-        this.menu.addMenuItem(this._reverse);
+        this._direction = new PopupMenu.PopupSubMenuMenuItem('', false);
+        this.menu.addMenuItem(this._direction);
+
+        this.menu.addMenuItem(new PopupMenu.PopupSeparatorMenuItem());
+        this._screenOff = new PopupMenu.PopupSwitchMenuItem('Turn off with screen', false);
+        this._screenOff.connect('toggled', (_i, state) => s.set_boolean('off-with-screen', state));
+        this.menu.addMenuItem(this._screenOff);
 
         s.connectObject('changed', () => this.sync(), this);
         this.sync();
@@ -177,18 +197,37 @@ class LightingToggle extends QuickMenuToggle {
         this._syncing = true;
         for (const [m, item] of this._modeItems)
             item.setOrnament(m === mode ? PopupMenu.Ornament.CHECK : PopupMenu.Ornament.NO_DOT);
+        const modeLabel = MODES.find(([m]) => m === mode)[1];
+        this._modeMenu.label.text = `Effect: ${modeLabel}`;
+        this._syncDirection(mode, s.get_string('direction'));
         this._color.visible = USES_COLOR.has(mode);
         this._color2.visible = USES_COLOR2.has(mode);
         this._color.setSelected(s.get_string('color'));
         this._color2.setSelected(s.get_string('color2'));
         this._speed.visible = ANIMATED.has(mode);
-        this._reverse.visible = DIRECTIONAL.has(mode);
         this._brightness.visible = mode !== 'firmware';
         this._brightness.slider.value = s.get_double('brightness');
         this._speed.slider.value = (MAX_PERIOD - s.get_double('speed')) / (MAX_PERIOD - MIN_PERIOD);
-        this._reverse.setToggleState(s.get_boolean('reverse'));
+        this._screenOff.setToggleState(s.get_boolean('off-with-screen'));
         this._syncing = false;
-        this.subtitle = this._ext.error ?? MODES.find(([m]) => m === mode)[1];
+        this.subtitle = this._ext.error ?? modeLabel;
+    }
+
+    _syncDirection(mode, stored) {
+        const options = DIRECTIONS[mode];
+        this._direction.visible = !!options;
+        if (!options)
+            return;
+        const dir = effectiveDirection(mode, stored);
+        this._direction.label.text = `Direction: ${options.find(([d]) => d === dir)[1]}`;
+        if (this._directionMode !== mode) {
+            this._directionMode = mode;
+            this._direction.menu.removeAll();
+            this._directionItems = options.map(([d, label]) =>
+                [d, this._direction.menu.addAction(label, () => this._set('direction', d))]);
+        }
+        for (const [d, item] of this._directionItems)
+            item.setOrnament(d === dir ? PopupMenu.Ornament.CHECK : PopupMenu.Ornament.NO_DOT);
     }
 });
 
@@ -220,6 +259,8 @@ export default class LamplightExtension extends Extension {
             this._restarts = 0;
             this._queueSend();
         }, this);
+        // Lights follow the screen: off while blanked or locked, if enabled.
+        Main.screenShield?.connectObject('active-changed', () => this._queueSend(), this);
         this._interface.connectObject('changed::accent-color', () => {
             if (this.settings.get_string('mode') === 'accent')
                 this._queueSend();
@@ -243,6 +284,7 @@ export default class LamplightExtension extends Extension {
         Gio.DBus.system.signal_unsubscribe(this._sleepId);
         this.settings.disconnectObject(this);
         this._interface.disconnectObject(this);
+        Main.screenShield?.disconnectObject(this);
         for (const id of [this._sendId, this._restartId])
             if (id)
                 GLib.source_remove(id);
@@ -272,9 +314,11 @@ export default class LamplightExtension extends Extension {
 
     _state() {
         const s = this.settings;
-        if (!s.get_boolean('enabled'))
+        const screenOff = s.get_boolean('off-with-screen') && Main.screenShield?.active;
+        if (!s.get_boolean('enabled') || screenOff)
             return {mode: 'off'};
         let mode = s.get_string('mode');
+        const direction = effectiveDirection(mode, s.get_string('direction'));
         let colors = [s.get_string('color'), s.get_string('color2')];
         if (mode === 'accent') {
             mode = 'solid';
@@ -284,7 +328,7 @@ export default class LamplightExtension extends Extension {
             mode, colors,
             brightness: s.get_double('brightness'),
             speed: s.get_double('speed'),
-            reverse: s.get_boolean('reverse'),
+            direction,
         };
     }
 
@@ -333,6 +377,11 @@ export default class LamplightExtension extends Extension {
             const bytes = proc.get_stderr_pipe().read_bytes(65536, null);
             stderr = new TextDecoder().decode(bytes.toArray());
         } catch {}
+        // Exit code 3: no LampArray hardware here; hide instead of nagging.
+        if (proc.get_exit_status() === 3) {
+            this._indicator.toggle.visible = false;
+            return;
+        }
         console.warn(`lamplight: daemon exited (${proc.get_exit_status()}): ${stderr}`);
         const error = stderr.split('\n').find(l => l.startsWith('Error: '));
         this._setError(error?.slice(7) ?? 'Lighting backend stopped');

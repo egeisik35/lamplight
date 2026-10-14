@@ -34,6 +34,7 @@ KINDS = ['Undefined', 'Keyboard', 'Mouse', 'GameController', 'Peripheral', 'Scen
 
 MODES = ['solid', 'breathe', 'cycle', 'rainbow', 'wave', 'wheel', 'gradient', 'firmware', 'off']
 ANIMATED = {'breathe', 'cycle', 'rainbow', 'wave', 'wheel'}
+DIRECTIONS = ['right', 'left', 'down', 'up', 'out', 'in', 'cw', 'ccw']
 FRAME_S = 1 / 30
 
 
@@ -155,7 +156,8 @@ class LampArray:
 
 
 def find_devices():
-    devices = []
+    """Return (usable devices, whether any LampArray was seen at all)."""
+    devices, seen = [], False
     for sys_path in sorted(glob.glob('/sys/class/hidraw/hidraw*')):
         try:
             with open(os.path.join(sys_path, 'device', 'report_descriptor'), 'rb') as f:
@@ -163,13 +165,14 @@ def find_devices():
         except OSError:
             continue
         for reports in arrays:
+            seen = True
             node = '/dev/' + os.path.basename(sys_path)
             try:
                 devices.append(LampArray(node, reports))
             except OSError as e:
                 hint = ' (see README: udev rule)' if isinstance(e, PermissionError) else ''
                 print(f'Error: {node}: {e.strerror}{hint}', file=sys.stderr)
-    return devices
+    return devices, seen
 
 
 # ---------------------------------------------------------------------------
@@ -191,27 +194,37 @@ def hue(h):
     return colorsys.hsv_to_rgb(h % 1.0, 1.0, 1.0)
 
 
+def axis(direction, x, y):
+    """Position along the effect direction, 0..1."""
+    if direction in ('out', 'in'):
+        d = min(1.0, math.hypot(x - 0.5, y - 0.5) / math.hypot(0.5, 0.5))
+        return d if direction == 'out' else 1 - d
+    return {'right': x, 'left': 1 - x, 'down': y, 'up': 1 - y}.get(direction, x)
+
+
 def render(state, t, positions):
-    mode = state['mode']
+    mode, direction = state['mode'], state['direction']
     c1, c2 = state['colors']
-    phase = t / state['speed'] * (-1 if state['reverse'] else 1)
+    phase = t / state['speed']
+    backwards = direction in ('left', 'up', 'in', 'ccw')
     if mode == 'solid':
         return [c1] * len(positions)
     if mode == 'gradient':
-        return [mix(c1, c2, x) for x, _ in positions]
+        return [mix(c1, c2, axis(direction, x, y)) for x, y in positions]
     if mode == 'breathe':
         return [mix(c2, c1, (1 - math.cos(2 * math.pi * phase)) / 2)] * len(positions)
     if mode == 'cycle':
-        return [hue(phase)] * len(positions)
+        return [hue(-phase if backwards else phase)] * len(positions)
     if mode == 'rainbow':
-        return [hue(phase - x) for x, _ in positions]
+        return [hue(phase - axis(direction, x, y)) for x, y in positions]
     if mode == 'wave':  # band of color 1 sweeping across color 2
-        def band(x):
-            d = abs(((x - phase) % 1.0) - 0.5) * 2  # 0 at band center, 1 far away
+        def band(s):
+            d = abs(((s - phase) % 1.0) - 0.5) * 2  # 0 at band center, 1 far away
             return mix(c1, c2, min(1.0, d * 2.5))
-        return [band(x) for x, _ in positions]
+        return [band(axis(direction, x, y)) for x, y in positions]
     if mode == 'wheel':
-        return [hue(phase + math.atan2(y - 0.5, x - 0.5) / (2 * math.pi)) for x, y in positions]
+        spin = -phase if backwards else phase
+        return [hue(spin + math.atan2(y - 0.5, x - 0.5) / (2 * math.pi)) for x, y in positions]
     return [(0, 0, 0)] * len(positions)  # off
 
 
@@ -226,8 +239,11 @@ def normalize(raw):
     speed = float(raw.get('speed', 4.0))
     if speed <= 0:
         raise ValueError('speed must be > 0 seconds')
+    direction = raw.get('direction', 'right')
+    if direction not in DIRECTIONS:
+        raise ValueError(f'unknown direction {direction!r}, use one of: {", ".join(DIRECTIONS)}')
     return {'mode': mode, 'colors': colors, 'brightness': brightness,
-            'speed': speed, 'reverse': bool(raw.get('reverse', False))}
+            'speed': speed, 'direction': direction}
 
 
 def apply(devices, state, t, autonomous_changed):
@@ -293,14 +309,18 @@ def main(argv=None):
                    help='primary color; give twice for the secondary color')
     p.add_argument('-b', '--brightness', type=float, default=100, help='0-100 (default 100)')
     p.add_argument('-s', '--speed', type=float, default=4.0, help='effect period in seconds (default 4)')
-    p.add_argument('-r', '--reverse', action='store_true', help='reverse effect direction')
+    p.add_argument('-d', '--direction', choices=DIRECTIONS, default='right',
+                   help='effect direction (cw/ccw for wheel; left/up/in/ccw reverse cycle)')
     args = p.parse_args(argv)
 
     if args.command == 'probe':
         return 0 if args.syspath and is_lamparray(args.syspath) else 1
 
-    devices = find_devices()
+    devices, seen = find_devices()
     if not devices:
+        if not seen:
+            print('Error: no HID LampArray device found', file=sys.stderr)
+            return 3  # nothing to control on this machine
         print('Error: no usable HID LampArray device found', file=sys.stderr)
         return 1
 
@@ -317,7 +337,7 @@ def main(argv=None):
             return 0
         state = normalize({'mode': args.command, 'colors': args.color,
                            'brightness': args.brightness / 100, 'speed': args.speed,
-                           'reverse': args.reverse})
+                           'direction': args.direction})
         if state['mode'] not in ANIMATED:
             apply(devices, state, 0, True)
             return 0

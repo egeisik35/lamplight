@@ -33,8 +33,22 @@
       <range min="0.5" max="20"/>
       <default>4.0</default>
     </key>
-    <key name="reverse" type="b">
-      <default>false</default>
+    <key name="direction" type="s">
+      <choices>
+        <choice value="right"/>
+        <choice value="left"/>
+        <choice value="down"/>
+        <choice value="up"/>
+        <choice value="out"/>
+        <choice value="in"/>
+        <choice value="cw"/>
+        <choice value="ccw"/>
+      </choices>
+      <default>'right'</default>
+    </key>
+    <key name="off-with-screen" type="b">
+      <summary>Turn the lights off while the screen is blanked or locked</summary>
+      <default>true</default>
     </key>
   </schema>
 </schemalist>

@@ -16,14 +16,47 @@ def test_parse_ite5570():
                        'multi': (0x44, 51), 'range': (0x45, 10), 'control': (0x46, 2)}]
 
 
+def test_parse_microsoft_reference():
+    # Microsoft's reference LampArray descriptor (ArduinoHidForWindows, MIT):
+    # USB device with report IDs 1-6 instead of the ITE5570's 0x41-0x46.
+    with open(os.path.join(HERE, 'microsoft-sample.desc'), 'rb') as f:
+        arrays = lamplight.parse_descriptor(f.read())
+    assert arrays == [{'attrs': (1, 23), 'attr_req': (2, 3), 'attr_resp': (3, 29),
+                       'multi': (4, 51), 'range': (5, 10), 'control': (6, 2)}]
+
+
+def test_non_rgb_devices_are_ignored():
+    for name in ('elan-touchpad.desc', 'logitech-m650.desc'):
+        with open(os.path.join(HERE, name), 'rb') as f:
+            assert lamplight.parse_descriptor(f.read()) == [], name
+
+
+def test_directions():
+    s = lamplight.normalize({'mode': 'gradient', 'colors': ['ff0000', '0000ff'], 'direction': 'up'})
+    assert lamplight.render(s, 0, [(0.5, 1), (0.5, 0)]) == [(1, 0, 0), (0, 0, 1)]
+    s = lamplight.normalize({'mode': 'gradient', 'colors': ['ff0000', '0000ff'], 'direction': 'out'})
+    center, corner = lamplight.render(s, 0, [(0.5, 0.5), (0, 0)])
+    assert center == (1, 0, 0) and corner == (0, 0, 1)
+    fwd = lamplight.normalize({'mode': 'cycle', 'speed': 4})
+    back = lamplight.normalize({'mode': 'cycle', 'speed': 4, 'direction': 'ccw'})
+    assert lamplight.render(fwd, 1, [(0, 0)]) != lamplight.render(back, 1, [(0, 0)])
+    try:
+        lamplight.normalize({'direction': 'sideways'})
+        raise AssertionError('bad direction accepted')
+    except ValueError:
+        pass
+
+
 def test_effects_shapes_and_ranges():
     positions = [(x / 9, y / 3) for y in range(4) for x in range(10)]
     for mode in lamplight.MODES:
-        state = lamplight.normalize({'mode': mode, 'colors': ['ff0000', '0000ff'], 'speed': 2})
-        for t in (0, 0.3, 1.7):
-            frame = lamplight.render(state, t, positions)
-            assert len(frame) == len(positions), mode
-            assert all(0 <= v <= 1 for c in frame for v in c), mode
+        for direction in lamplight.DIRECTIONS:
+            state = lamplight.normalize({'mode': mode, 'colors': ['ff0000', '0000ff'],
+                                         'speed': 2, 'direction': direction})
+            for t in (0, 0.3, 1.7):
+                frame = lamplight.render(state, t, positions)
+                assert len(frame) == len(positions), (mode, direction)
+                assert all(0 <= v <= 1 for c in frame for v in c), (mode, direction)
 
 
 def test_gradient_and_breathe_endpoints():

@@ -17,8 +17,11 @@ count and lamp positions from the device itself, with no per-model table.
 
 - Effects: solid, match GNOME accent color, breathing, color cycle, rainbow,
   wave, wheel, gradient, firmware effect, off
-- Brightness, speed and direction controls
-- Restores your lighting after suspend
+- Brightness, speed and direction controls (right, left, up, down, outward,
+  inward; clockwise or counterclockwise for wheel), like Windows
+- Turns the lights off while the screen is off or locked, and restores them
+  after suspend
+- Hides itself on computers without a LampArray device
 - No root needed at runtime; a udev rule grants access only to LampArray devices
 - One Python file, standard library only
 
@@ -30,8 +33,14 @@ count and lamp positions from the device itself, with no per-model table.
 |--------|-----------|-------|
 | ASUS Vivobook S 14 M5406KA | ITE5570 (I2C) | 1 (single zone) |
 
-**Likely:** any device whose lighting works with Windows Dynamic Lighting.
-This includes other ASUS Vivobook S models with the ITE5570 controller.
+**Likely:** devices whose firmware exposes a native HID LampArray, such as
+other ASUS Vivobook S models with the ITE5570 controller.
+
+**Not supported:** some vendors add Dynamic Lighting through a Windows-only
+driver instead of the device firmware. Those devices do not show a LampArray
+on Linux, and lamplight cannot see them. Single-color (white) keyboard
+backlights are not LampArrays either; GNOME already controls their
+brightness.
 
 To check your device:
 
@@ -83,7 +92,7 @@ The custom color picker needs `zenity`.
 lamplight info                              # list devices
 lamplight solid -c ff5500 -b 60             # orange at 60 % brightness
 lamplight breathe -c 00ffff -s 5            # cyan, 5 s per breath
-lamplight wave -c ff0000 -c 0000ff -r       # red over blue, reversed
+lamplight wave -c ff0000 -c 0000ff -d out  # red over blue, from the center
 lamplight firmware                          # hand back to the built-in effect
 lamplight off
 ```
@@ -93,7 +102,7 @@ lamplight off
 | `-c RRGGBB` | color; give it twice to set the second color |
 | `-b 0-100` | brightness in percent |
 | `-s SECONDS` | effect period; lower is faster |
-| `-r` | reverse direction |
+| `-d DIRECTION` | `right` `left` `down` `up` `out` `in`; `cw` `ccw` for wheel |
 
 Animated modes run until you press Ctrl+C.
 
@@ -106,7 +115,7 @@ sudo udevadm control --reload-rules
 sudo udevadm trigger --subsystem-match=hidraw
 ```
 
-**`no usable HID LampArray device found`**: your device does not expose a
+**`no HID LampArray device found`**: your device does not expose a
 LampArray. Please open a device report with the output of
 `grep -H HID_NAME /sys/class/hidraw/*/device/uevent`.
 
@@ -131,7 +140,7 @@ LampArray reports from the HID Usage Tables (Lighting and Illumination page,
 stdin closes. The GNOME extension uses it like this:
 
 ```json
-{"mode": "wave", "colors": ["ff0000", "0000ff"], "brightness": 0.8, "speed": 4, "reverse": false}
+{"mode": "wave", "colors": ["ff0000", "0000ff"], "brightness": 0.8, "speed": 4, "direction": "right"}
 ```
 
 ### Permissions
@@ -148,7 +157,7 @@ and LEDs on the same interface would expose its button reports.
 ## Development
 
 ```sh
-make test     # unit tests, including a real ITE5570 descriptor
+make test     # unit tests against real descriptors (see tests/THIRD_PARTY.md)
 make zip      # GNOME extension zip for extensions.gnome.org
 ```
 
