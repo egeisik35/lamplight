@@ -12,7 +12,9 @@ import gi
 
 gi.require_version('Gtk', '4.0')
 gi.require_version('Adw', '1')
-from gi.repository import Adw, Gdk, Gio, GLib, Gtk  # noqa: E402
+gi.require_version('Graphene', '1.0')
+import cairo  # noqa: E402
+from gi.repository import Adw, Gdk, Gio, GLib, Graphene, Gtk  # noqa: E402
 
 import lamplight  # noqa: E402
 
@@ -68,61 +70,115 @@ def keyboard_keys():
     return keys
 
 
-class Preview(Gtk.DrawingArea):
-    """Live preview of the current effect, as the hardware would show it."""
+class Preview(Gtk.Widget):
+    """Live preview of the current effect, as the hardware would show it.
+
+    The keyboard is drawn once into textures; each frame only tints them on
+    the GPU. Redraws run at 30 fps, only while an effect animates.
+    Wall-clock time keeps the preview in step with the service.
+    """
+
+    FPS = 30
+    PAD, GAP, RADIUS = 12, 4, 4
 
     def __init__(self, settings, interface, device):
-        super().__init__(content_height=170, hexpand=True)
+        super().__init__(hexpand=True, height_request=170)
         self.settings, self.interface = settings, interface
         self.keys = keyboard_keys()
-        if device and device.count > 1:
-            self.lamps = device.positions  # per-key/zone device: draw real lamp spots
-        else:
-            self.lamps = None  # single zone: whole keyboard shows one color
-        self.start = time.monotonic()
-        self.set_draw_func(self.draw)
-        self.add_tick_callback(lambda *_: self.queue_draw() or GLib.SOURCE_CONTINUE)
+        # Per-key/zone device: draw real lamp spots. Single zone: one color.
+        self.lamps = device.positions if device and device.count > 1 else None
+        self.textures, self.texture_key, self.timer = None, None, 0
+        self.update_state()
+        settings.connect('changed', lambda *_: self.update_state())
+        if interface:
+            interface.connect('changed::accent-color', lambda *_: self.update_state())
 
-    def draw(self, _area, cr, width, height):
+    def update_state(self):
         accent = self.interface.get_string('accent-color') if self.interface else None
         try:
-            state = lamplight.settings_state(self.settings, accent)
+            self.state = lamplight.settings_state(self.settings, accent)
         except ValueError:
-            return
-        t = time.monotonic() - self.start
-        pad, gap = 12, 4
-        kw, kh = width - 2 * pad, height - 2 * pad
-        if state['mode'] == 'firmware':
-            colors = [lamplight.hue(t / 6 + i / 40) for i in range(len(self.keys))]
-        elif self.lamps is None:
-            colors = lamplight.render(state, t, [(0.5, 0.5)]) * len(self.keys)
-        else:
-            colors = None
-        b = state['brightness'] if state['mode'] != 'firmware' else 1
-        if colors is not None:
-            for (x, y, w, h), c in zip(self.keys, colors):
-                self.key(cr, pad + x * kw, pad + y * kh, w * kw - gap, h * kh - gap, c, b)
-        else:
-            for (x, y, w, h) in self.keys:
-                self.key(cr, pad + x * kw, pad + y * kh, w * kw - gap, h * kh - gap, (0, 0, 0), 0)
-            for (x, y), c in zip(self.lamps, lamplight.render(state, t, self.lamps)):
-                cr.set_source_rgba(*c, 0.25 + 0.75 * b)
-                cr.arc(pad + x * kw, pad + y * kh, 6, 0, 2 * math.pi)
-                cr.fill()
+            self.state = lamplight.normalize({'mode': 'off'})
+        self.queue_draw()
+        animated = self.state['mode'] in lamplight.ANIMATED
+        if animated and not self.timer:
+            self.timer = GLib.timeout_add(1000 // self.FPS, self.on_timer)
+        elif not animated and self.timer:
+            GLib.source_remove(self.timer)
+            self.timer = 0
 
-    @staticmethod
-    def key(cr, x, y, w, h, color, brightness):
-        r = 4
-        cr.new_sub_path()
-        cr.arc(x + w - r, y + r, r, -math.pi / 2, 0)
-        cr.arc(x + w - r, y + h - r, r, 0, math.pi / 2)
-        cr.arc(x + r, y + h - r, r, math.pi / 2, math.pi)
-        cr.arc(x + r, y + r, r, math.pi, 3 * math.pi / 2)
-        cr.close_path()
-        cr.set_source_rgb(0.16, 0.16, 0.18)
-        cr.fill_preserve()
-        cr.set_source_rgba(*color, 0.15 + 0.85 * brightness if any(color) else 0)
-        cr.fill()
+    def on_timer(self):
+        if self.get_mapped():  # skip work while the window is hidden
+            self.queue_draw()
+        return GLib.SOURCE_CONTINUE
+
+    def build_textures(self, width, height, scale):
+        """Dark keys, white key mask and rainbow keys, at device pixel size."""
+        def paint(fill):
+            surface = cairo.ImageSurface(cairo.FORMAT_ARGB32, width * scale, height * scale)
+            cr = cairo.Context(surface)
+            cr.scale(scale, scale)
+            kw, kh = width - 2 * self.PAD, height - 2 * self.PAD
+            r = self.RADIUS
+            for x, y, w, h in self.keys:
+                x, y = self.PAD + x * kw, self.PAD + y * kh
+                w, h = w * kw - self.GAP, h * kh - self.GAP
+                cr.new_sub_path()
+                cr.arc(x + w - r, y + r, r, -math.pi / 2, 0)
+                cr.arc(x + w - r, y + h - r, r, 0, math.pi / 2)
+                cr.arc(x + r, y + h - r, r, math.pi / 2, math.pi)
+                cr.arc(x + r, y + r, r, math.pi, 3 * math.pi / 2)
+                cr.close_path()
+            fill(cr)
+            cr.fill()
+            surface.flush()
+            return Gdk.MemoryTexture.new(
+                width * scale, height * scale, Gdk.MemoryFormat.B8G8R8A8_PREMULTIPLIED,
+                GLib.Bytes.new(bytes(surface.get_data())), surface.get_stride())
+
+        def rainbow(cr):
+            grad = cairo.LinearGradient(0, 0, width, 0)
+            for i in range(7):
+                grad.add_color_stop_rgb(i / 6, *lamplight.hue(i / 6))
+            cr.set_source(grad)
+
+        return (paint(lambda cr: cr.set_source_rgb(0.16, 0.16, 0.18)),
+                paint(lambda cr: cr.set_source_rgb(1, 1, 1)),
+                paint(rainbow))
+
+    def do_snapshot(self, snap):
+        width, height, scale = self.get_width(), self.get_height(), self.get_scale_factor()
+        if width <= 2 * self.PAD or height <= 2 * self.PAD:
+            return
+        if self.texture_key != (width, height, scale):
+            self.textures, self.texture_key = self.build_textures(width, height, scale), (width, height, scale)
+        dark, mask, rainbow = self.textures
+        bounds = Graphene.Rect().init(0, 0, width, height)
+        snap.append_texture(dark, bounds)
+
+        state = self.state
+        if state['mode'] == 'firmware':  # the device runs its own effect
+            snap.append_texture(rainbow, bounds)
+            return
+        b = state['brightness']
+        if self.lamps is None:
+            r, g, bl = lamplight.render(state, time.time(), [(0.5, 0.5)])[0]
+            if not (r or g or bl):
+                return
+            tint = Graphene.Matrix().init_from_float(
+                [r, 0, 0, 0, 0, g, 0, 0, 0, 0, bl, 0, 0, 0, 0, 1])
+            snap.push_opacity(0.15 + 0.85 * b)
+            snap.push_color_matrix(tint, Graphene.Vec4().init(0, 0, 0, 0))
+            snap.append_texture(mask, bounds)
+            snap.pop()
+            snap.pop()
+            return
+        kw, kh = width - 2 * self.PAD, height - 2 * self.PAD
+        for (x, y), c in zip(self.lamps, lamplight.render(state, time.time(), self.lamps)):
+            rgba = Gdk.RGBA()
+            rgba.red, rgba.green, rgba.blue, rgba.alpha = *c, 0.25 + 0.75 * b
+            snap.append_color(rgba, Graphene.Rect().init(
+                self.PAD + x * kw - 5, self.PAD + y * kh - 5, 10, 10))
 
 
 class Window(Adw.ApplicationWindow):

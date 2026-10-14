@@ -101,6 +101,7 @@ class LampArray:
     def __init__(self, devnode, reports):
         self.devnode, self.reports = devnode, reports
         self.fd = os.open(devnode, os.O_RDWR)
+        self.last = None
         a = self._get('attrs')
         self.count, w, h, d, kind, self.min_interval_us = struct.unpack_from('<HIIIII', a, 1)
         self.bbox = (w, h, d)
@@ -135,9 +136,13 @@ class LampArray:
 
     def autonomous(self, on):
         self._set('control', bytes([1 if on else 0]))
+        self.last = None  # firmware may have changed the lamps: resend next frame
 
     def show(self, colors):
         """colors: one (r, g, b) tuple of 0..255 ints per lamp."""
+        if colors == self.last:  # slow effects repeat frames; skip the I/O
+            return
+        self.last = colors
         if 'range' in self.reports and len(set(colors)) == 1:
             self._set('range', struct.pack('<BHH4B', 1, 0, self.count - 1, *colors[0], 255))
             return
@@ -304,7 +309,6 @@ class Service:
         self.interface = (Gio.Settings.new('org.gnome.desktop.interface')
                           if schema and schema.has_key('accent-color') else None)
         self.devices, self.screen_off, self.timer = [], False, 0
-        self.start = time.monotonic()
 
         self.settings.connect('changed', lambda _s, key: key != 'status' and self.update())
         if self.interface:
@@ -348,7 +352,8 @@ class Service:
 
     def draw(self, new_state):
         try:
-            apply(self.devices, self.state, time.monotonic() - self.start, new_state)
+            # Wall-clock time keeps the app preview in step with the keyboard.
+            apply(self.devices, self.state, time.time(), new_state)
             return True
         except OSError as e:
             print(f'lamplight: device write failed: {e.strerror}', file=sys.stderr, flush=True)

@@ -79,7 +79,7 @@ class FakeArray(lamplight.LampArray):
     """LampArray with ioctls recorded instead of sent."""
 
     def __init__(self, count, ids_per_update=8):
-        self.count, self.ids_per_update, self.sent = count, ids_per_update, []
+        self.count, self.ids_per_update, self.sent, self.last = count, ids_per_update, [], None
         self.reports = {'multi': (0x44, 3 + 6 * ids_per_update), 'range': (0x45, 10)}
 
     def _set(self, name, payload):
@@ -100,6 +100,17 @@ def test_uniform_frame_uses_range_update():
     dev = FakeArray(count=1)
     dev.show([(255, 101, 0)])
     assert dev.sent == [('range', struct.pack('<BHH4B', 1, 0, 0, 255, 101, 0, 255))]
+
+
+def test_repeated_frame_is_skipped_until_autonomous_change():
+    dev = FakeArray(count=1)
+    dev.reports['control'] = (0x46, 2)
+    dev.show([(1, 2, 3)])
+    dev.show([(1, 2, 3)])
+    assert len(dev.sent) == 1
+    dev.autonomous(False)
+    dev.show([(1, 2, 3)])
+    assert [n for n, _ in dev.sent] == ['range', 'control', 'range']
 
 
 class FakeSettings:

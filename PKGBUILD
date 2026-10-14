@@ -8,7 +8,7 @@ pkgdesc="Keyboard RGB lighting for Windows Dynamic Lighting (HID LampArray) devi
 arch=('any')
 url="https://github.com/egeisik35/lamplight"
 license=('MIT')
-depends=('python' 'python-gobject' 'gtk4' 'libadwaita')
+depends=('python' 'python-gobject' 'python-cairo' 'gtk4' 'libadwaita')
 makedepends=('make')
 optdepends=('gnome-shell: Quick Settings tile')
 
