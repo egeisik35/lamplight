@@ -1,6 +1,6 @@
 pkgbase = lamplight
 	pkgdesc = Keyboard RGB lighting for Windows Dynamic Lighting (HID LampArray) devices: service, GTK app and GNOME tile
-	pkgver = 0.1.1
+	pkgver = 0.1.2
 	pkgrel = 1
 	url = https://github.com/egeisik35/lamplight
 	arch = any
@@ -12,7 +12,7 @@ pkgbase = lamplight
 	depends = gtk4
 	depends = libadwaita
 	optdepends = gnome-shell: Quick Settings tile
-	source = lamplight-0.1.1.tar.gz::https://github.com/egeisik35/lamplight/archive/v0.1.1.tar.gz
-	sha256sums = 1b0d502b542988b992b54e84d6edbb172d446af108cadaad7cc831c123862c89
+	source = lamplight-0.1.2.tar.gz::https://github.com/egeisik35/lamplight/archive/v0.1.2.tar.gz
+	sha256sums = fc5edd9254a1cb99e15fcb9ed7ad49f52f942f2e375dcaf5e5b2ef8cb52d9d75
 
 pkgname = lamplight
