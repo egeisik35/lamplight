@@ -267,6 +267,30 @@ class Window(Adw.ApplicationWindow):
         behavior.add(screen)
         page.add(behavior)
 
+        # LEDs mix colors differently from screens (blue is often too
+        # strong); per-channel gains let users match what they see.
+        calibration = Adw.PreferencesGroup(title='Color Calibration')
+        self.balance = Adw.ExpanderRow(
+            title='White Balance',
+            subtitle='Lower a channel if white looks tinted on the keyboard')
+        reset = Gtk.Button(icon_name='edit-undo-symbolic', valign=Gtk.Align.CENTER,
+                           tooltip_text='Reset')
+        reset.add_css_class('flat')
+        reset.connect('clicked', lambda _b: self.settings.reset('white-balance'))
+        self.balance.add_suffix(reset)
+        self.balance_scales = []
+        for name in ('Red', 'Green', 'Blue'):
+            row = Adw.ActionRow(title=name)
+            scale = Gtk.Scale.new_with_range(Gtk.Orientation.HORIZONTAL, 30, 100, 1)
+            scale.set_size_request(240, -1)
+            scale.set_draw_value(False)
+            scale.connect('value-changed', lambda _s: self.syncing or self.save_balance())
+            row.add_suffix(scale)
+            self.balance.add_row(row)
+            self.balance_scales.append(scale)
+        calibration.add(self.balance)
+        page.add(calibration)
+
         if devices:
             info = Adw.PreferencesGroup(title='Devices')
             for d in devices:
@@ -294,6 +318,10 @@ class Window(Adw.ApplicationWindow):
         group.add(row)
         return row, scale
 
+    def save_balance(self):
+        gains = tuple(s.get_value() / 100 for s in self.balance_scales)
+        self.settings.set_value('white-balance', GLib.Variant('(ddd)', gains))
+
     def on_effect(self, row, _param):
         if not self.syncing:
             self.settings.set_string('mode', MODES[row.get_selected()][0])
@@ -320,6 +348,8 @@ class Window(Adw.ApplicationWindow):
         self.brightness[1].set_value(s.get_double('brightness') * 100)
         self.speed[0].set_visible(mode in lamplight.ANIMATED)
         self.speed[1].set_value(round(period_to_speed(s.get_double('speed'))))
+        for scale, gain in zip(self.balance_scales, s.get_value('white-balance').unpack()):
+            scale.set_value(gain * 100)
 
         options = DIRECTIONS.get(mode)
         self.direction.set_visible(bool(options))

@@ -80,6 +80,7 @@ class FakeArray(lamplight.LampArray):
 
     def __init__(self, count, ids_per_update=8):
         self.count, self.ids_per_update, self.sent, self.last = count, ids_per_update, [], None
+        self.positions = [(0.5, 0.5)] * count
         self.reports = {'multi': (0x44, 3 + 6 * ids_per_update), 'range': (0x45, 10)}
 
     def _set(self, name, payload):
@@ -116,11 +117,18 @@ def test_repeated_frame_is_skipped_until_autonomous_change():
 class FakeSettings:
     def __init__(self, **values):
         self.v = {'enabled': True, 'off-with-screen': True, 'mode': 'solid', 'color': '102030',
-                  'color2': '000000', 'brightness': 1.0, 'speed': 4.0, 'direction': 'right'}
+                  'color2': '000000', 'brightness': 1.0, 'speed': 4.0, 'direction': 'right',
+                  'gamma': 2.2}
         self.v.update(values)
 
     def get_boolean(self, k):
         return self.v[k]
+
+    def get_value(self, k):
+        class V:
+            def unpack(_self):
+                return (1.0, 1.0, 0.6)
+        return V()
 
     get_string = get_double = get_boolean
 
@@ -134,6 +142,23 @@ def test_settings_state():
     assert lamplight.settings_state(FakeSettings(**{'off-with-screen': False}),
                                     screen_off=True)['mode'] == 'solid'
     assert lamplight.settings_state(FakeSettings(enabled=False))['mode'] == 'off'
+    assert lamplight.settings_state(FakeSettings())['balance'] == (1.0, 1.0, 0.6)
+
+
+def test_white_balance_scales_channels():
+    dev = FakeArray(count=1)
+    dev.reports['control'] = (0x46, 2)
+    state = lamplight.normalize({'mode': 'solid', 'colors': ['ffffff'], 'balance': (1, 1, 0.5)})
+    lamplight.apply([dev], state, 0, False)
+    assert dev.sent[-1] == ('range', struct.pack('<BHH4B', 1, 0, 0, 255, 255, 128, 255))
+
+
+def test_gamma_darkens_mid_values_only():
+    dev = FakeArray(count=1)
+    state = lamplight.normalize({'mode': 'solid', 'colors': ['ff8000'], 'gamma': 2.2})
+    lamplight.apply([dev], state, 0, False)
+    r, g, b = struct.unpack_from('<4B', dev.sent[-1][1], 5)[:3]
+    assert (r, b) == (255, 0) and 50 < g < 60  # 0x80 -> about 22 % light
 
 
 if __name__ == '__main__':

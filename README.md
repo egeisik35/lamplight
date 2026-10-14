@@ -188,6 +188,22 @@ gsettings set io.github.egeisik35.Lamplight mode wave
 gsettings set io.github.egeisik35.Lamplight color 'ff0000'
 ```
 
+### Color accuracy
+
+Screens encode colors with a gamma curve, while LEDs respond linearly, and
+each LED channel has its own strength. Lamplight decodes colors with gamma 2.2
+by default, and the app's **Color Calibration** section lets you lower a
+channel until white looks white on your keyboard. The same settings work from
+a terminal:
+
+```sh
+gsettings set io.github.egeisik35.Lamplight white-balance '(1.0, 1.0, 0.63)'
+gsettings set io.github.egeisik35.Lamplight gamma 2.2   # 1.0 sends raw values
+```
+
+LEDs show purer colors than a screen, so a perfect match is not possible;
+calibration gets close.
+
 ### Permissions
 
 The udev rule runs `lamplight probe` on each hidraw device. Only devices with

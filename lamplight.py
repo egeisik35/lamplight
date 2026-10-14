@@ -16,7 +16,7 @@ import struct
 import sys
 import time
 
-__version__ = '0.1.1'
+__version__ = '0.1.2'
 
 LIGHTING_PAGE = 0x59
 REPORTS = {  # LampArray collection usages
@@ -245,8 +245,12 @@ def normalize(raw):
     direction = raw.get('direction', 'right')
     if direction not in DIRECTIONS:
         raise ValueError(f'unknown direction {direction!r}, use one of: {", ".join(DIRECTIONS)}')
+    balance = tuple(min(1.0, max(0.0, float(g))) for g in raw.get('balance', (1, 1, 1)))
+    if len(balance) != 3:
+        raise ValueError('balance needs three channel gains')
+    gamma = min(3.0, max(1.0, float(raw.get('gamma', 1.0))))
     return {'mode': mode, 'colors': colors, 'brightness': brightness,
-            'speed': speed, 'direction': direction}
+            'speed': speed, 'direction': direction, 'balance': balance, 'gamma': gamma}
 
 
 def apply(devices, state, t, autonomous_changed):
@@ -255,8 +259,13 @@ def apply(devices, state, t, autonomous_changed):
             dev.autonomous(state['mode'] == 'firmware')
         if state['mode'] == 'firmware':
             continue
-        b = state['brightness']
-        dev.show([tuple(round(v * b * 255) for v in c) for c in render(state, t, dev.positions)])
+        # LEDs are linear while screen colors are gamma-encoded, so decode
+        # first; then white balance (LED channels differ, often blue is
+        # strongest).
+        gains = [state['brightness'] * g * 255 for g in state['balance']]
+        gamma = state['gamma']
+        dev.show([tuple(round(v ** gamma * g) for v, g in zip(c, gains))
+                  for c in render(state, t, dev.positions)])
 
 
 def frame_interval(devices):
@@ -288,6 +297,7 @@ def vivid(hex_color):
 
 def settings_state(settings, accent=None, screen_off=False):
     """Build a normalized state from the Lamplight GSettings."""
+    balance = settings.get_value('white-balance').unpack()
     if not settings.get_boolean('enabled') or (screen_off and settings.get_boolean('off-with-screen')):
         return normalize({'mode': 'off'})
     mode = settings.get_string('mode')
@@ -297,7 +307,9 @@ def settings_state(settings, accent=None, screen_off=False):
     return normalize({'mode': mode, 'colors': colors,
                       'brightness': settings.get_double('brightness'),
                       'speed': settings.get_double('speed'),
-                      'direction': settings.get_string('direction')})
+                      'direction': settings.get_string('direction'),
+                      'balance': balance,
+                      'gamma': settings.get_double('gamma')})
 
 
 class Service:

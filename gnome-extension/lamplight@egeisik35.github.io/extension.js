@@ -136,8 +136,30 @@ class LightingToggle extends QuickMenuToggle {
         this.menu.addMenuItem(new PopupMenu.PopupSeparatorMenuItem());
         this.menu.addSettingsAction('Lighting Settings', APP_DESKTOP);
 
+        this._fitToScreen(this._modeMenu);
+        this._fitToScreen(this._direction);
+
         settings.connectObject('changed', () => this.sync(), this);
         this.sync();
+    }
+
+    // Quick Settings menus do not scroll, so an expanded list could run off
+    // the screen. Cap each submenu to the space left below the menu at the
+    // moment it opens, and let it scroll inside that.
+    _fitToScreen(item) {
+        const sub = item.menu;
+        const open = sub.open.bind(sub);
+        sub._needsScrollbar = () => true;
+        sub.open = params => {
+            const scale = St.ThemeContext.get_for_stage(global.stage).scale_factor;
+            const [, top] = this.menu.actor.get_transformed_position();
+            const [, rest] = this.menu.box.get_preferred_height(-1);
+            const monitor = Main.layoutManager.findIndexForActor(this.menu.actor);
+            const work = Main.layoutManager.getWorkAreaForMonitor(monitor);
+            const spare = work.y + work.height - top - rest - 24 * scale;
+            sub.actor.style = `max-height: ${Math.max(120 * scale, spare) / scale}px;`;
+            return open(params);
+        };
     }
 
     _set(key, value) {

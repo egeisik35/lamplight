@@ -33,6 +33,11 @@
   </supports>
   <content_rating type="oars-1.1"/>
   <releases>
+    <release version="0.1.2" date="2026-10-15">
+      <description>
+        <p>Colors closer to the screen: gamma correction and white-balance calibration. The Quick Settings menu scrolls instead of running off small screens.</p>
+      </description>
+    </release>
     <release version="0.1.1" date="2026-10-15">
       <description>
         <p>Install only the parts you need, software center metadata, and documentation updates.</p>

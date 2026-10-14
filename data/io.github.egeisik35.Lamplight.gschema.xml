@@ -50,6 +50,15 @@
       <summary>Turn the lights off while the screen is blanked or locked</summary>
       <default>true</default>
     </key>
+    <key name="white-balance" type="(ddd)">
+      <summary>Red, green and blue gains (0-1) to match LED colors to the screen</summary>
+      <default>(1.0, 1.0, 1.0)</default>
+    </key>
+    <key name="gamma" type="d">
+      <summary>Color response curve; 2.2 matches screens, 1.0 sends raw values</summary>
+      <range min="1.0" max="3.0"/>
+      <default>2.2</default>
+    </key>
     <key name="status" type="s">
       <summary>Written by the service: empty, 'no-device' or 'no-access'</summary>
       <default>''</default>
