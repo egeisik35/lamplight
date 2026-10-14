@@ -1,6 +1,6 @@
 # Maintainer: egeisik35 <egeisik3534@gmail.com>
 pkgname=lamplight
-pkgver=0.1.2
+pkgver=0.1.3
 pkgrel=1
 pkgdesc="Keyboard RGB lighting for Windows Dynamic Lighting (HID LampArray) devices: service, GTK app and GNOME tile"
 arch=('any')
@@ -10,7 +10,7 @@ depends=('python' 'python-gobject' 'python-cairo' 'gtk4' 'libadwaita')
 makedepends=('make')
 optdepends=('gnome-shell: Quick Settings tile')
 source=("$pkgname-$pkgver.tar.gz::$url/archive/v$pkgver.tar.gz")
-sha256sums=('fc5edd9254a1cb99e15fcb9ed7ad49f52f942f2e375dcaf5e5b2ef8cb52d9d75')
+sha256sums=('e024fa1d0724439c0df60ef840e7e8e759c64b290d4fad7636ae67635c5512fa')
 
 check() {
     cd "$pkgname-$pkgver"
