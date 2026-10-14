@@ -27,14 +27,31 @@ count and lamp positions from the device itself, with no per-model table.
 
 ## Supported hardware
 
-**Confirmed:**
+Lamplight works with devices whose firmware exposes a native HID LampArray.
+Report IDs and sizes differ between devices, so lamplight reads them from each
+device's descriptor instead of hardcoding them.
+
+**Tested with lamplight:**
 
 | Device | Controller | Lamps |
 |--------|-----------|-------|
-| ASUS Vivobook S 14 M5406KA | ITE5570 (I2C) | 1 (single zone) |
+| ASUS Vivobook S 14 M5406KA | ITE5570 `0b05:5570` (I2C) | 1 |
 
-**Likely:** devices whose firmware exposes a native HID LampArray, such as
-other ASUS Vivobook S models with the ITE5570 controller.
+**Known LampArray hardware:** other open-source projects confirm these on Linux.
+"Descriptor checked" means lamplight parsed that device's published report
+descriptor correctly.
+
+| Device | Controller | Confirmed by | Descriptor checked |
+|--------|-----------|--------------|--------------------|
+| ASUS Vivobook S 14 / S 16 (M5406, M5606, S5406) | ITE5570 `0b05:5570` or `0b05:19b6` | [vivobook-rgb](https://github.com/matcraft94/vivobook-rgb), [vrgb](https://github.com/MHS-20/vrgb) | yes |
+| ASUS TUF Gaming A16 (FA608) | ITE5570 `0b05:19b6` | [asusctl #148](https://github.com/OpenGamingCollective/asusctl/issues/148) | no (same ID as Vivobook S5406) |
+| Lenovo LOQ IRX10 (24 zones) | ITE `048d:c693` | [lampctl](https://github.com/Salvo6516/lampctl) | yes |
+| Acer Predator Helios 16 PH16-72 (per key) | Sunrex `05af:666a` | [lamparray-kbd](https://github.com/usamathpc/lamparray-kbd) | no |
+| GIGABYTE GAMING A16 | `0414:8105` / `0414:8104` | [Gigabyte-Gaming-A16-Linux-KB-Drivers](https://github.com/Luminous418/Gigabyte-Gaming-A16-Linux-KB-Drivers) | no |
+
+Run `lamplight info` to check your device. Please
+[open a device report](https://github.com/egeisik35/lamplight/issues/new?template=device-report.yml),
+whatever the result.
 
 **Not supported:** some vendors add Dynamic Lighting through a Windows-only
 driver instead of the device firmware. Those devices do not show a LampArray
@@ -42,15 +59,9 @@ on Linux, and lamplight cannot see them. Single-color (white) keyboard
 backlights are not LampArrays either; GNOME already controls their
 brightness.
 
-To check your device:
-
-```sh
-lamplight info
-```
-
-If it lists a device, it is supported. Please
-[open a device report](https://github.com/egeisik35/lamplight/issues/new?template=device-report.yml),
-whatever the result, so this table can grow.
+**Known quirk:** some keyboards (for example the GIGABYTE A16) handle their
+Fn brightness keys only in firmware mode. Use the **Built-in effect** mode to
+get them back.
 
 Position-based effects (rainbow, wave, wheel, gradient) need a per-key
 keyboard. On a single-zone keyboard, they color the whole keyboard at once.
@@ -163,12 +174,23 @@ make zip      # GNOME extension zip for extensions.gnome.org
 
 ## Related projects
 
-- [vivobook-rgb](https://github.com/matcraft94/vivobook-rgb): single-color CLI
-  for the ITE5570 controller. It confirmed that this controller accepts
-  LampArray range updates on Linux.
+Other Linux tools for LampArray keyboards, each focused on its own hardware or
+interface:
+
+- [vivobook-rgb](https://github.com/matcraft94/vivobook-rgb) and its fork
+  [vrgb](https://github.com/MHS-20/vrgb): CLI for ASUS Vivobook keyboards
+- [lamparray-kbd](https://github.com/usamathpc/lamparray-kbd): per-key CLI,
+  tested on the Acer Predator Helios 16
+- [lampctl](https://github.com/Salvo6516/lampctl): generic CLI in C
+- [Gigabyte-Gaming-A16-Linux-KB-Drivers](https://github.com/Luminous418/Gigabyte-Gaming-A16-Linux-KB-Drivers):
+  GIGABYTE A16 keyboard
+- [asusctl](https://github.com/OpenGamingCollective/asusctl): ASUS laptop
+  daemon, with LampArray support in progress for TUF models
 - Linux kernel: a proposed `hid-lamparray` helper exposes LampArray devices as
-  a single-color LED. Per-key control is meant to stay in user space over
-  hidraw, which is the approach Lamplight takes.
+  a single-color LED. Per-key control is meant to stay in user space.
+
+Lamplight adds animated effects with directions, a GNOME Quick Settings tile,
+accent-color sync, and screen-off handling, for any LampArray device.
 
 ## License
 

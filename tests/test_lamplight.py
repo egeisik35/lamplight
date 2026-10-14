@@ -25,6 +25,14 @@ def test_parse_microsoft_reference():
                        'multi': (4, 51), 'range': (5, 10), 'control': (6, 2)}]
 
 
+def test_parse_lenovo_loq():
+    # Lenovo LOQ IRX10, ITE 048d:c693 USB per-zone keyboard (from lampctl, MIT).
+    with open(os.path.join(HERE, 'lenovo-loq-ite-c693.desc'), 'rb') as f:
+        arrays = lamplight.parse_descriptor(f.read())
+    assert arrays == [{'attrs': (1, 23), 'attr_req': (2, 3), 'attr_resp': (3, 29),
+                       'multi': (4, 51), 'range': (5, 10), 'control': (6, 2)}]
+
+
 def test_non_rgb_devices_are_ignored():
     for name in ('elan-touchpad.desc', 'logitech-m650.desc'):
         with open(os.path.join(HERE, name), 'rb') as f:
