@@ -1,0 +1,5 @@
+# Give the active local session access to HID LampArray (Dynamic Lighting)
+# devices, so lamplight runs without root. `lamplight probe` checks the
+# report descriptor, so only real LampArray devices match.
+# Must sort before 73-seat-late.rules for TAG+="uaccess" to take effect.
+SUBSYSTEM=="hidraw", ACTION=="add|change", PROGRAM="/usr/bin/lamplight probe /sys%p", TAG+="uaccess"

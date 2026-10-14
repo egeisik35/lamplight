@@ -1,0 +1,13 @@
+{
+  "uuid": "lamplight@egeisik35.github.io",
+  "name": "Lamplight",
+  "description": "Keyboard and device RGB lighting in Quick Settings, for any HID LampArray (Dynamic Lighting) device. Effects: solid, accent color, breathing, color cycle, rainbow, wave, wheel, gradient, firmware. Requires the lamplight backend.",
+  "shell-version": [
+    "48",
+    "49",
+    "50",
+    "51"
+  ],
+  "settings-schema": "org.gnome.shell.extensions.lamplight",
+  "url": "https://github.com/egeisik35/lamplight"
+}

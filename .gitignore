@@ -1,0 +1,5 @@
+gschemas.compiled
+pkg/
+src/
+*.pkg.tar.*
+__pycache__/
