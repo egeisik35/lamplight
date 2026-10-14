@@ -5,3 +5,5 @@ src/
 __pycache__/
 70-lamplight.rules.out
 *.out
+*.tar.gz
+.SRCINFO.bak

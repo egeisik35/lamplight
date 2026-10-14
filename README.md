@@ -72,11 +72,22 @@ keyboard. On a single-zone keyboard, they color the whole keyboard at once.
 
 ### Arch Linux
 
+Download `lamplight-*-any.pkg.tar.zst` from the
+[latest release](https://github.com/egeisik35/lamplight/releases/latest), then:
+
+```sh
+sudo pacman -U lamplight-*-any.pkg.tar.zst
+```
+
+Or build it yourself:
+
 ```sh
 git clone https://github.com/egeisik35/lamplight.git
 cd lamplight
 makepkg -si
 ```
+
+An AUR package will follow once AUR account registration reopens.
 
 ### Other distributions
 
