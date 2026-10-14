@@ -5,6 +5,11 @@
 [![test](https://github.com/egeisik35/lamplight/actions/workflows/test.yml/badge.svg)](https://github.com/egeisik35/lamplight/actions/workflows/test.yml)
 ![license](https://img.shields.io/badge/license-MIT-blue)
 
+<p align="center">
+  <img src="docs/app.png" alt="Lamplight app with live keyboard preview" width="420">
+  <img src="docs/tile.png" alt="Lighting tile in GNOME Quick Settings" width="380">
+</p>
+
 On Windows, some laptops let you set the keyboard color under
 *Settings > Personalization > Dynamic Lighting* or in MyASUS. On Linux, the
 keyboard stays on whatever color the firmware chose. Lamplight brings that
