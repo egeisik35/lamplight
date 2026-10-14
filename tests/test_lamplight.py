@@ -102,14 +102,27 @@ def test_uniform_frame_uses_range_update():
     assert dev.sent == [('range', struct.pack('<BHH4B', 1, 0, 0, 255, 101, 0, 255))]
 
 
-def test_stdin_protocol(tmp_path=None):
-    r, w = os.pipe()
-    os.write(w, b'{"mode": "solid", "colors": ["00ff00"]}\n{"mode": "nope"}\n')
-    os.close(w)
-    states = lamplight.StdinStates(r)
-    assert states(0)['colors'][0] == (0, 1, 0)
-    assert states(0) is None  # bad line ignored
-    assert states(0) is StopIteration
+class FakeSettings:
+    def __init__(self, **values):
+        self.v = {'enabled': True, 'off-with-screen': True, 'mode': 'solid', 'color': '102030',
+                  'color2': '000000', 'brightness': 1.0, 'speed': 4.0, 'direction': 'right'}
+        self.v.update(values)
+
+    def get_boolean(self, k):
+        return self.v[k]
+
+    get_string = get_double = get_boolean
+
+
+def test_settings_state():
+    st = lamplight.settings_state(FakeSettings(), 'blue')
+    assert st['mode'] == 'solid' and st['colors'][0] == lamplight.hex_rgb('102030')
+    accent = lamplight.settings_state(FakeSettings(mode='accent'), 'red')
+    assert max(accent['colors'][0]) == 1.0  # accent boosted to full brightness
+    assert lamplight.settings_state(FakeSettings(), screen_off=True)['mode'] == 'off'
+    assert lamplight.settings_state(FakeSettings(**{'off-with-screen': False}),
+                                    screen_off=True)['mode'] == 'solid'
+    assert lamplight.settings_state(FakeSettings(enabled=False))['mode'] == 'off'
 
 
 if __name__ == '__main__':

@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <schemalist>
-  <schema id="org.gnome.shell.extensions.lamplight" path="/org/gnome/shell/extensions/lamplight/">
+  <schema id="io.github.egeisik35.Lamplight" path="/io/github/egeisik35/Lamplight/">
     <key name="enabled" type="b">
       <default>true</default>
     </key>
@@ -49,6 +49,10 @@
     <key name="off-with-screen" type="b">
       <summary>Turn the lights off while the screen is blanked or locked</summary>
       <default>true</default>
+    </key>
+    <key name="status" type="s">
+      <summary>Written by the service: empty, 'no-device' or 'no-access'</summary>
+      <default>''</default>
     </key>
   </schema>
 </schemalist>

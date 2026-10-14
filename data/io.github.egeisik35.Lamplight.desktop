@@ -1,0 +1,11 @@
+[Desktop Entry]
+Name=Lamplight
+GenericName=Keyboard Lighting
+Comment=Set keyboard RGB colors and effects
+Exec=lamplight-app
+Icon=io.github.egeisik35.Lamplight
+Terminal=false
+Type=Application
+Categories=Settings;HardwareSettings;GTK;
+Keywords=RGB;keyboard;backlight;lighting;LED;color;Dynamic Lighting;LampArray;
+StartupNotify=true

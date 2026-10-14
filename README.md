@@ -8,7 +8,8 @@
 On Windows, some laptops let you set the keyboard color under
 *Settings > Personalization > Dynamic Lighting* or in MyASUS. On Linux, the
 keyboard stays on whatever color the firmware chose. Lamplight brings that
-control to Linux. It has a command-line tool and a GNOME Quick Settings tile.
+control to Linux: a settings app with a live preview, a GNOME Quick Settings
+tile, and a command-line tool.
 
 These keyboards speak **HID LampArray**, the open USB HID standard behind
 Dynamic Lighting. ROG-focused tools such as asusctl do not handle it.
@@ -23,7 +24,8 @@ count and lamp positions from the device itself, with no per-model table.
   after suspend
 - Hides itself on computers without a LampArray device
 - No root needed at runtime; a udev rule grants access only to LampArray devices
-- One Python file, standard library only
+- Works on any desktop: a small user service applies the settings, so effects
+  keep running after you close the app
 
 ## Supported hardware
 
@@ -86,16 +88,20 @@ cd lamplight
 sudo make install
 ```
 
-`make install` installs the CLI, the udev rule and the GNOME extension. It
-then reloads udev. To remove everything, run `sudo make uninstall`.
+You need PyGObject, GTK 4 and libadwaita (`python3-gi`, `gir1.2-adw-1` on
+Debian/Ubuntu; `python3-gobject`, `libadwaita` on Fedora).
+
+`make install` installs the service, the app, the CLI, the udev rule and the
+GNOME extension. It then reloads udev. To remove everything, run
+`sudo make uninstall`.
+
+After installing, log out and back in once. The service starts with your
+session, and **Lamplight** appears in your app list.
 
 ### GNOME tile
 
-Log out and back in once, so GNOME Shell finds the extension. Then turn on
-**Lamplight** in the Extensions app. A **Keyboard Light** tile appears in
-Quick Settings.
-
-The custom color picker needs `zenity`.
+Turn on **Lamplight** in the Extensions app. A **Lighting** tile appears in
+Quick Settings, with a shortcut to the app.
 
 ## Command line
 
@@ -130,8 +136,9 @@ sudo udevadm trigger --subsystem-match=hidraw
 LampArray. Please open a device report with the output of
 `grep -H HID_NAME /sys/class/hidraw/*/device/uevent`.
 
-**Tile says "lamplight backend not installed"**: `lamplight` is not in the
-`PATH` of GNOME Shell. Install with `make install` or the package.
+**Nothing changes when I pick a color**: check that the service runs:
+`systemctl --user status lamplight`. Start it with
+`systemctl --user enable --now lamplight`.
 
 ## How it works
 
@@ -147,11 +154,14 @@ LampArray reports from the HID Usage Tables (Lighting and Illumination page,
 | LampRangeUpdate | one color for all lamps |
 | LampArrayControl | firmware (autonomous) mode on or off |
 
-`lamplight daemon` reads one JSON state per line on stdin and animates until
-stdin closes. The GNOME extension uses it like this:
+`lamplight service` runs in the background as a systemd user service. It
+reads the settings (GSettings schema `io.github.egeisik35.Lamplight`), renders
+the effect, and follows the screen saver and suspend. The app and the GNOME
+tile only change settings. You can script it too:
 
-```json
-{"mode": "wave", "colors": ["ff0000", "0000ff"], "brightness": 0.8, "speed": 4, "direction": "right"}
+```sh
+gsettings set io.github.egeisik35.Lamplight mode wave
+gsettings set io.github.egeisik35.Lamplight color 'ff0000'
 ```
 
 ### Permissions

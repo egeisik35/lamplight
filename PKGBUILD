@@ -4,14 +4,13 @@
 pkgname=lamplight
 pkgver=0.1.0
 pkgrel=1
-pkgdesc="RGB lighting for HID LampArray (Windows Dynamic Lighting) keyboards and devices, with a GNOME Quick Settings tile"
+pkgdesc="Keyboard RGB lighting for Windows Dynamic Lighting (HID LampArray) devices: service, GTK app and GNOME tile"
 arch=('any')
 url="https://github.com/egeisik35/lamplight"
 license=('MIT')
-depends=('python')
+depends=('python' 'python-gobject' 'gtk4' 'libadwaita')
 makedepends=('make')
-optdepends=('gnome-shell: Quick Settings tile'
-            'zenity: custom color picker in the GNOME tile')
+optdepends=('gnome-shell: Quick Settings tile')
 
 package() {
     cd "$startdir"

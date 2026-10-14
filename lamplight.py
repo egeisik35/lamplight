@@ -10,10 +10,8 @@ import array
 import colorsys
 import fcntl
 import glob
-import json
 import math
 import os
-import select
 import struct
 import sys
 import time
@@ -229,7 +227,7 @@ def render(state, t, positions):
 
 
 def normalize(raw):
-    """Fill defaults and validate a state dict (from CLI or the JSON stdin protocol)."""
+    """Fill defaults and validate a state dict."""
     mode = raw.get('mode', 'solid')
     if mode not in MODES:
         raise ValueError(f'unknown mode {mode!r}, use one of: {", ".join(MODES)}')
@@ -256,54 +254,160 @@ def apply(devices, state, t, autonomous_changed):
         dev.show([tuple(round(v * b * 255) for v in c) for c in render(state, t, dev.positions)])
 
 
-def run(devices, states):
-    """Apply states pulled from `states(timeout)`; animate between updates.
-
-    `states` returns a normalized state, None (nothing new before timeout) or
-    StopIteration. Every new state re-sends the autonomous-mode flag, since
-    firmware can fall back to its own effect after suspend.
-    """
-    state, start = None, time.monotonic()
-    dt = max([FRAME_S] + [d.min_interval_us / 1e6 for d in devices])
-    while True:
-        animated = state is not None and state['mode'] in ANIMATED
-        new = states(dt if animated else None)
-        if new is StopIteration:
-            return
-        if new is not None:
-            state = new
-        elif not animated:
-            continue
-        apply(devices, state, time.monotonic() - start, new is not None)
+def frame_interval(devices):
+    return max([FRAME_S] + [d.min_interval_us / 1e6 for d in devices])
 
 
-class StdinStates:
-    """JSON-lines protocol: one state object per line on stdin; EOF stops."""
+# ---------------------------------------------------------------------------
+# Service: owns the devices and renders the shared GSettings state. The app
+# and the GNOME tile only change settings, so effects keep running without
+# them and on any desktop.
+# ---------------------------------------------------------------------------
 
-    def __init__(self, fd=0):
-        self.fd, self.buf = fd, b''
+SCHEMA = 'io.github.egeisik35.Lamplight'
 
-    def __call__(self, timeout):
-        while b'\n' not in self.buf:
-            if not select.select([self.fd], [], [], timeout)[0]:
-                return None
-            chunk = os.read(self.fd, 4096)
-            if not chunk:
-                return StopIteration
-            self.buf += chunk
-        line, self.buf = self.buf.split(b'\n', 1)
+# libadwaita accent colors (GNOME 47+)
+ACCENTS = {
+    'blue': '3584e4', 'teal': '2190a4', 'green': '3a944a', 'yellow': 'c88800',
+    'orange': 'ed5b00', 'red': 'e62d42', 'pink': 'd56199', 'purple': '9141ac',
+    'slate': '6f8396',
+}
+
+
+def vivid(hex_color):
+    """LEDs wash out darker UI colors: scale so the brightest channel is full."""
+    rgb = hex_rgb(hex_color)
+    top = max(rgb) or 1
+    return ''.join(f'{round(v / top * 255):02x}' for v in rgb)
+
+
+def settings_state(settings, accent=None, screen_off=False):
+    """Build a normalized state from the Lamplight GSettings."""
+    if not settings.get_boolean('enabled') or (screen_off and settings.get_boolean('off-with-screen')):
+        return normalize({'mode': 'off'})
+    mode = settings.get_string('mode')
+    colors = [settings.get_string('color'), settings.get_string('color2')]
+    if mode == 'accent':
+        mode, colors = 'solid', [vivid(ACCENTS.get(accent, ACCENTS['blue']))]
+    return normalize({'mode': mode, 'colors': colors,
+                      'brightness': settings.get_double('brightness'),
+                      'speed': settings.get_double('speed'),
+                      'direction': settings.get_string('direction')})
+
+
+class Service:
+    def __init__(self):
+        from gi.repository import Gio, GLib
+        self.GLib = GLib
+        self.settings = Gio.Settings.new(SCHEMA)
+        schema = Gio.SettingsSchemaSource.get_default().lookup('org.gnome.desktop.interface', True)
+        self.interface = (Gio.Settings.new('org.gnome.desktop.interface')
+                          if schema and schema.has_key('accent-color') else None)
+        self.devices, self.screen_off, self.timer = [], False, 0
+        self.start = time.monotonic()
+
+        self.settings.connect('changed', lambda _s, key: key != 'status' and self.update())
+        if self.interface:
+            self.interface.connect('changed::accent-color', lambda *_: self.update())
+        session = Gio.bus_get_sync(Gio.BusType.SESSION)
+        for name in ('org.gnome.ScreenSaver', 'org.freedesktop.ScreenSaver'):
+            session.signal_subscribe(None, name, 'ActiveChanged', None, None,
+                                     Gio.DBusSignalFlags.NONE, self.on_screensaver)
+        Gio.bus_get_sync(Gio.BusType.SYSTEM).signal_subscribe(
+            'org.freedesktop.login1', 'org.freedesktop.login1.Manager', 'PrepareForSleep',
+            '/org/freedesktop/login1', None, Gio.DBusSignalFlags.NONE, self.on_sleep)
+        # ponytail: polling every 10 s covers hotplug; use udev monitoring if
+        # people plug lighting devices in and out often.
+        GLib.timeout_add_seconds(10, self.rescan_if_missing)
+        self.rescan()
+
+    def set_status(self, status):
+        if self.settings.get_string('status') != status:
+            self.settings.set_string('status', status)
+
+    def rescan(self):
+        for d in self.devices:
+            d.close()
+        self.devices, seen = find_devices()
+        self.set_status('' if self.devices else 'no-access' if seen else 'no-device')
+        self.update()
+        return self.GLib.SOURCE_REMOVE
+
+    def rescan_if_missing(self):
+        if not self.devices:
+            self.rescan()
+        return self.GLib.SOURCE_CONTINUE
+
+    def on_screensaver(self, _conn, _sender, _path, _iface, _signal, params):
+        self.screen_off = params.unpack()[0]
+        self.update()
+
+    def on_sleep(self, _conn, _sender, _path, _iface, _signal, params):
+        if not params.unpack()[0]:  # resumed: devices may have re-enumerated
+            self.GLib.timeout_add(1500, self.rescan)
+
+    def draw(self, new_state):
         try:
-            return normalize(json.loads(line))
-        except (ValueError, TypeError, AttributeError) as e:
-            print(f'lamplight: ignoring bad state: {e}', file=sys.stderr, flush=True)
-            return None
+            apply(self.devices, self.state, time.monotonic() - self.start, new_state)
+            return True
+        except OSError as e:
+            print(f'lamplight: device write failed: {e.strerror}', file=sys.stderr, flush=True)
+            self.devices = []
+            self.set_status('no-access')
+            self.GLib.timeout_add(2000, self.rescan)
+            return False
+
+    def update(self):
+        accent = self.interface.get_string('accent-color') if self.interface else None
+        try:
+            self.state = settings_state(self.settings, accent, self.screen_off)
+        except ValueError as e:
+            print(f'lamplight: bad settings: {e}', file=sys.stderr, flush=True)
+            return
+        if not self.devices or not self.draw(True):
+            return
+        animated = self.state['mode'] in ANIMATED
+        if animated and not self.timer:
+            self.timer = self.GLib.timeout_add(round(frame_interval(self.devices) * 1000), self.tick)
+        elif not animated and self.timer:
+            self.GLib.source_remove(self.timer)
+            self.timer = 0
+
+    def tick(self):
+        if self.devices and self.state['mode'] in ANIMATED and self.draw(False):
+            return self.GLib.SOURCE_CONTINUE
+        self.timer = 0
+        return self.GLib.SOURCE_REMOVE
+
+
+def serve():
+    try:
+        import gi
+        gi.require_version('Gio', '2.0')
+        from gi.repository import GLib
+    except (ImportError, ValueError):
+        print('Error: the service needs PyGObject (python-gobject / python3-gi)', file=sys.stderr)
+        return 1
+    try:
+        gi.require_version('GLibUnix', '2.0')
+        from gi.repository import GLibUnix
+        signal_add = GLibUnix.signal_add
+    except (ImportError, ValueError):  # GLib < 2.80
+        signal_add = GLib.unix_signal_add
+    Service()
+    loop = GLib.MainLoop()
+    for sig in (2, 15):  # SIGINT, SIGTERM: stop and keep the last colors
+        signal_add(GLib.PRIORITY_DEFAULT, sig, lambda: loop.quit() or GLib.SOURCE_REMOVE)
+    loop.run()
+    return 0
 
 
 def main(argv=None):
     p = argparse.ArgumentParser(prog='lamplight', description=__doc__.splitlines()[0])
     p.add_argument('--version', action='version', version=f'%(prog)s {__version__}')
-    p.add_argument('command', choices=['info', 'daemon', 'probe'] + MODES,
-                   help='info, daemon (JSON lines on stdin), probe SYSPATH (udev), or a lighting mode')
+    p.add_argument('command', choices=['info', 'service', 'probe'] + MODES,
+                   help='info, service (background, follows settings), probe SYSPATH (udev), '
+                        'or a lighting mode')
     p.add_argument('syspath', nargs='?', help='probe only: /sys path of a hidraw device')
     p.add_argument('-c', '--color', action='append', metavar='RRGGBB',
                    help='primary color; give twice for the secondary color')
@@ -315,6 +419,8 @@ def main(argv=None):
 
     if args.command == 'probe':
         return 0 if args.syspath and is_lamparray(args.syspath) else 1
+    if args.command == 'service':
+        return serve()
 
     devices, seen = find_devices()
     if not devices:
@@ -332,9 +438,6 @@ def main(argv=None):
         return 0
 
     try:
-        if args.command == 'daemon':
-            run(devices, StdinStates())
-            return 0
         state = normalize({'mode': args.command, 'colors': args.color,
                            'brightness': args.brightness / 100, 'speed': args.speed,
                            'direction': args.direction})
@@ -342,8 +445,11 @@ def main(argv=None):
             apply(devices, state, 0, True)
             return 0
         print(f'Running {state["mode"]}, Ctrl+C to stop')
-        pending = [state]
-        run(devices, lambda timeout: pending.pop() if pending else time.sleep(timeout))
+        apply(devices, state, 0, True)
+        start, dt = time.monotonic(), frame_interval(devices)
+        while True:
+            time.sleep(dt)
+            apply(devices, state, time.monotonic() - start, False)
     except KeyboardInterrupt:
         return 0
     except ValueError as e:
