@@ -3,3 +3,4 @@ pkg/
 src/
 *.pkg.tar.*
 __pycache__/
+70-lamplight.rules.out

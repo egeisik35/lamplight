@@ -1,126 +1,166 @@
 # Lamplight
 
-RGB lighting control on Linux for **HID LampArray** devices: the open HID
-standard behind Windows 11 "Dynamic Lighting". It includes a GNOME Quick
-Settings tile.
+**Keyboard RGB lighting on Linux for laptops that use Windows Dynamic Lighting.**
 
-Many recent laptops expose their keyboard backlight as a LampArray, for
-example ASUS Vivobook S 14/16 (ITE5570 controller). Some mice and keyboards
-do too. Tools like asusctl and OpenRGB do not handle these devices, so on
-Linux the color stays stuck at whatever the firmware picked.
+[![test](https://github.com/egeisik35/lamplight/actions/workflows/test.yml/badge.svg)](https://github.com/egeisik35/lamplight/actions/workflows/test.yml)
+![license](https://img.shields.io/badge/license-MIT-blue)
 
-Lamplight is vendor-neutral. It finds devices by parsing each hidraw report
-descriptor for a LampArray collection (usage page `0x59`). Report IDs, report
-sizes, lamp count and lamp positions all come from the device itself.
+On Windows, some laptops let you set the keyboard color under
+*Settings > Personalization > Dynamic Lighting* or in MyASUS. On Linux, the
+keyboard stays on whatever color the firmware chose. Lamplight brings that
+control to Linux. It has a command-line tool and a GNOME Quick Settings tile.
 
-## Effects
+These keyboards speak **HID LampArray**, the open USB HID standard behind
+Dynamic Lighting. ROG-focused tools such as asusctl do not handle it.
+Lamplight works with any LampArray device: it reads the report layout, lamp
+count and lamp positions from the device itself, with no per-model table.
 
-| Mode | Notes |
-|------|-------|
-| solid | one color |
-| accent (GNOME tile) | follows the GNOME accent color, boosted for LEDs |
-| breathe | fades between color 1 and color 2 (default black) |
-| cycle | all lamps step through the color wheel |
-| rainbow | hue spread across the keyboard, moving |
-| wave | band of color 1 sweeping over color 2 |
-| wheel | hues rotating around the keyboard center |
-| gradient | static color 1 to color 2, left to right |
-| firmware | hand control back to the device's built-in effect |
-| off | all lamps off |
+- Effects: solid, match GNOME accent color, breathing, color cycle, rainbow,
+  wave, wheel, gradient, firmware effect, off
+- Brightness, speed and direction controls
+- Restores your lighting after suspend
+- No root needed at runtime; a udev rule grants access only to LampArray devices
+- One Python file, standard library only
 
-Brightness, speed and direction apply to every mode where they make sense.
+## Supported hardware
+
+**Confirmed:**
+
+| Device | Controller | Lamps |
+|--------|-----------|-------|
+| ASUS Vivobook S 14 M5406KA | ITE5570 (I2C) | 1 (single zone) |
+
+**Likely:** any device whose lighting works with Windows Dynamic Lighting.
+This includes other ASUS Vivobook S models with the ITE5570 controller.
+
+To check your device:
+
+```sh
+lamplight info
+```
+
+If it lists a device, it is supported. Please
+[open a device report](https://github.com/egeisik35/lamplight/issues/new?template=device-report.yml),
+whatever the result, so this table can grow.
+
 Position-based effects (rainbow, wave, wheel, gradient) need a per-key
-device. On a single-zone keyboard, they animate the whole keyboard as one
-color.
+keyboard. On a single-zone keyboard, they color the whole keyboard at once.
 
 ## Install
 
-Arch: run `makepkg -si` in this directory. This installs:
+### Arch Linux
 
-- `/usr/bin/lamplight` (Python 3, stdlib only)
-- `/usr/lib/udev/rules.d/70-lamplight.rules`
-- the GNOME extension and its settings schema
+```sh
+git clone https://github.com/egeisik35/lamplight.git
+cd lamplight
+makepkg -si
+```
 
-Then:
+### Other distributions
+
+You need Python 3.9 or newer.
+
+```sh
+git clone https://github.com/egeisik35/lamplight.git
+cd lamplight
+sudo make install
+```
+
+`make install` installs the CLI, the udev rule and the GNOME extension. It
+then reloads udev. To remove everything, run `sudo make uninstall`.
+
+### GNOME tile
+
+Log out and back in once, so GNOME Shell finds the extension. Then turn on
+**Lamplight** in the Extensions app. A **Keyboard Light** tile appears in
+Quick Settings.
+
+The custom color picker needs `zenity`.
+
+## Command line
+
+```sh
+lamplight info                              # list devices
+lamplight solid -c ff5500 -b 60             # orange at 60 % brightness
+lamplight breathe -c 00ffff -s 5            # cyan, 5 s per breath
+lamplight wave -c ff0000 -c 0000ff -r       # red over blue, reversed
+lamplight firmware                          # hand back to the built-in effect
+lamplight off
+```
+
+| Option | Meaning |
+|--------|---------|
+| `-c RRGGBB` | color; give it twice to set the second color |
+| `-b 0-100` | brightness in percent |
+| `-s SECONDS` | effect period; lower is faster |
+| `-r` | reverse direction |
+
+Animated modes run until you press Ctrl+C.
+
+## Troubleshooting
+
+**`Permission denied`**: the udev rule did not apply. Run:
 
 ```sh
 sudo udevadm control --reload-rules
 sudo udevadm trigger --subsystem-match=hidraw
 ```
 
-Log out and back in once, so GNOME Shell discovers the new extension. Then
-enable it in the Extensions app.
+**`no usable HID LampArray device found`**: your device does not expose a
+LampArray. Please open a device report with the output of
+`grep -H HID_NAME /sys/class/hidraw/*/device/uevent`.
 
-### Permissions
+**Tile says "lamplight backend not installed"**: `lamplight` is not in the
+`PATH` of GNOME Shell. Install with `make install` or the package.
 
-The udev rule runs `lamplight probe` on each hidraw device. It tags only real
-LampArray devices with `uaccess`, so only the user at the seat gets access,
-without root. The rule must sort before `73-seat-late.rules`, so a
-`99-*.rules` name does not work for `uaccess`.
+## How it works
 
-Note: hidraw access also lets the user read that device's input reports. For
-keyboard backlight controllers this is lighting state, not keystrokes. A
-composite device (for example a mouse with buttons and LEDs on one
-interface) would expose its button reports too.
+Lamplight talks to `/dev/hidraw*` with HID feature reports. It uses the
+LampArray reports from the HID Usage Tables (Lighting and Illumination page,
+`0x59`):
 
-## CLI
-
-```sh
-lamplight info                          # list LampArray devices
-lamplight solid -c ff5500 -b 60         # orange, 60 % brightness
-lamplight breathe -c 00ffff -c 000000 -s 5
-lamplight wave -c ff0000 -c 0000ff -r
-lamplight firmware                      # back to built-in effect
-lamplight off
-```
-
-Animated modes run in the foreground until Ctrl+C.
+| Report | Use |
+|--------|-----|
+| LampArrayAttributes | lamp count, size, kind, minimum update interval |
+| LampAttributesRequest / Response | position of each lamp |
+| LampMultiUpdate | per-lamp colors, sent in chunks |
+| LampRangeUpdate | one color for all lamps |
+| LampArrayControl | firmware (autonomous) mode on or off |
 
 `lamplight daemon` reads one JSON state per line on stdin and animates until
-stdin closes. The GNOME extension uses this protocol:
+stdin closes. The GNOME extension uses it like this:
 
 ```json
 {"mode": "wave", "colors": ["ff0000", "0000ff"], "brightness": 0.8, "speed": 4, "reverse": false}
 ```
 
-## How it works
+### Permissions
 
-LampArray reports used (HID Usage Tables, Lighting and Illumination page):
+The udev rule runs `lamplight probe` on each hidraw device. Only devices with
+a LampArray get the `uaccess` tag, which gives the logged-in user access. The
+rule is numbered 70 because `uaccess` must come before
+`73-seat-late.rules`.
 
-- `LampArrayAttributesReport`: lamp count, bounding box, kind, minimum update interval
-- `LampAttributesRequest` / `Response`: position of each lamp
-- `LampMultiUpdateReport`: per-lamp colors, chunked; the last chunk sets `LampUpdateComplete`
-- `LampRangeUpdateReport`: one color for a range of lamps, used when all lamps share a color
-- `LampArrayControlReport`: autonomous (firmware) mode on/off
+hidraw access also lets the user read that device's input reports. On laptop
+lighting controllers, these are not keystrokes. A mouse that has its buttons
+and LEDs on the same interface would expose its button reports.
 
-Every new state re-sends autonomous mode off, because some controllers return
-to their own effect after suspend. The GNOME extension also re-sends the
-state on resume.
-
-## Tests
+## Development
 
 ```sh
-python -I tests/test_lamplight.py
+make test     # unit tests, including a real ITE5570 descriptor
+make zip      # GNOME extension zip for extensions.gnome.org
 ```
 
-`tests/ite5570.desc` is the real report descriptor of an ASUS Vivobook S 14
-(M5406KA). It contains a standard LampArray plus a vendor mirror on page
-`0xFF59`, which lamplight ignores.
+## Related projects
 
-## Tested hardware
+- [vivobook-rgb](https://github.com/matcraft94/vivobook-rgb): single-color CLI
+  for the ITE5570 controller. It confirmed that this controller accepts
+  LampArray range updates on Linux.
+- Linux kernel: a proposed `hid-lamparray` helper exposes LampArray devices as
+  a single-color LED. Per-key control is meant to stay in user space over
+  hidraw, which is the approach Lamplight takes.
 
-| Device | Controller | Lamps |
-|--------|-----------|-------|
-| ASUS Vivobook S 14 M5406KA | ITE5570 (I2C) | 1 (single zone) |
+## License
 
-Status: early (0.1.0). Descriptor parsing is verified against this device; on-device effect testing is in progress.
-
-Please open an issue or PR with `lamplight info` output for your device.
-
-## Prior art
-
-- [vivobook-rgb](https://github.com/matcraft94/vivobook-rgb) (MIT): first
-  Linux tool for the ITE5570; single-zone, ASUS-only.
-- Kernel work: a `hid-lamparray` helper for hid-generic (single-zone LED class
-  device) and TUXEDO's virtual LampArray driver. Complex control is expected to
-  stay in userspace via hidraw, which is what lamplight does.
+MIT

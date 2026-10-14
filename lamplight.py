@@ -18,6 +18,8 @@ import struct
 import sys
 import time
 
+__version__ = '0.1.0'
+
 LIGHTING_PAGE = 0x59
 REPORTS = {  # LampArray collection usages
     0x02: 'attrs',      # LampArrayAttributesReport
@@ -283,6 +285,7 @@ class StdinStates:
 
 def main(argv=None):
     p = argparse.ArgumentParser(prog='lamplight', description=__doc__.splitlines()[0])
+    p.add_argument('--version', action='version', version=f'%(prog)s {__version__}')
     p.add_argument('command', choices=['info', 'daemon', 'probe'] + MODES,
                    help='info, daemon (JSON lines on stdin), probe SYSPATH (udev), or a lighting mode')
     p.add_argument('syspath', nargs='?', help='probe only: /sys path of a hidraw device')
