@@ -56,7 +56,10 @@ uninstall:
 test:
 	python3 -I tests/test_lamplight.py
 
+# Store build: bundles the backend and the schema so the extension works
+# without the package.
 zip:
-	gnome-extensions pack --force $(EXT)
+	gnome-extensions pack --force --extra-source=../../lamplight.py \
+		--schema=../../data/$(APP).gschema.xml $(EXT)
 
 .PHONY: install install-cli install-service install-app install-extension uninstall test zip

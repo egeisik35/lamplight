@@ -78,6 +78,20 @@ keyboard. On a single-zone keyboard, they color the whole keyboard at once.
 
 ## Install
 
+### Easiest: GNOME Extensions (GNOME 48–51)
+
+1. Open the **Extension Manager** app, or
+   [extensions.gnome.org](https://extensions.gnome.org/extension/11264/lamplight/),
+   search for **Lamplight** and install it.
+2. Open Quick Settings, open the **Lighting** tile and choose
+   **Set up keyboard access…** once. It asks for your password to allow your
+   user to use the keyboard lighting device.
+
+That's all. The extension brings its own backend. It needs Python 3 with
+PyGObject, which GNOME systems normally have. The package below adds the
+settings app (live preview, color calibration) and works on other desktops
+too.
+
 ### Arch Linux
 
 Download `lamplight-*-any.pkg.tar.zst` from the
@@ -129,10 +143,8 @@ session, and **Lamplight** appears in your app list.
 
 The tile is installed with the package. Turn on **Lamplight** in the
 Extensions app, and a **Lighting** tile appears in Quick Settings, with a
-shortcut to the app. It is also on
-[GNOME Extensions](https://extensions.gnome.org/extension/11264/lamplight/),
-which delivers tile updates automatically; it still needs the lamplight
-package above.
+shortcut to the app. When the package is installed, the tile uses its
+service; otherwise it runs its bundled backend.
 
 ## Command line
 
@@ -217,6 +229,11 @@ LEDs show purer colors than a screen, so a perfect match is not possible;
 calibration gets close.
 
 ### Permissions
+
+With the GNOME extension alone, **Set up keyboard access…** writes static
+rules for the devices present (by bus and USB/I2C ID) to
+`/etc/udev/rules.d/70-lamplight-extension.rules` using `pkexec`. Run it
+again after adding a new lighting device.
 
 The udev rule runs `lamplight probe` on each hidraw device. Only devices with
 a LampArray get the `uaccess` tag, which gives the logged-in user access. The

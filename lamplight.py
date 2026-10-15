@@ -16,7 +16,7 @@ import struct
 import sys
 import time
 
-__version__ = '0.1.3'
+__version__ = '0.2.0'
 
 LIGHTING_PAGE = 0x59
 REPORTS = {  # LampArray collection usages
@@ -91,6 +91,20 @@ def is_lamparray(sys_path):
             return bool(parse_descriptor(f.read()))
     except OSError:
         return False
+
+
+def udev_rules():
+    """Static udev rules for the LampArray devices present now.
+
+    Used by the GNOME extension, which cannot rely on /usr/bin/lamplight
+    probe: a rule must never run a user-writable script as root.
+    """
+    rules = set()
+    for sys_path in glob.glob('/sys/class/hidraw/hidraw*'):
+        if is_lamparray(sys_path):
+            hid = os.path.basename(os.path.realpath(os.path.join(sys_path, 'device')))
+            rules.add(f'SUBSYSTEM=="hidraw", KERNELS=="{hid.rsplit(".", 1)[0]}.*", TAG+="uaccess"')
+    return sorted(rules)
 
 
 def _ioc(nr, size):
@@ -471,9 +485,9 @@ def serve():
 def main(argv=None):
     p = argparse.ArgumentParser(prog='lamplight', description=__doc__.splitlines()[0])
     p.add_argument('--version', action='version', version=f'%(prog)s {__version__}')
-    p.add_argument('command', choices=['info', 'service', 'probe'] + MODES,
+    p.add_argument('command', choices=['info', 'service', 'probe', 'udev-rules'] + MODES,
                    help='info, service (background, follows settings), probe SYSPATH (udev), '
-                        'or a lighting mode')
+                        'udev-rules (static rules for present devices), or a lighting mode')
     p.add_argument('syspath', nargs='?', help='probe only: /sys path of a hidraw device')
     p.add_argument('-c', '--color', action='append', metavar='RRGGBB',
                    help='primary color; give twice for the secondary color')
@@ -487,6 +501,10 @@ def main(argv=None):
         return 0 if args.syspath and is_lamparray(args.syspath) else 1
     if args.command == 'service':
         return serve()
+    if args.command == 'udev-rules':
+        rules = udev_rules()
+        print('\n'.join(rules))
+        return 0 if rules else 3
 
     devices, seen = find_devices()
     if not devices:

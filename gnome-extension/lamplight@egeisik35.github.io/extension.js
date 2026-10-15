@@ -1,10 +1,15 @@
 // Lamplight: Quick Settings tile for HID LampArray (Dynamic Lighting) devices.
 // The lamplight service drives the hardware from the shared
 // io.github.egeisik35.Lamplight settings; this tile only edits them.
+// With the lamplight package installed, systemd runs that service. Without
+// it (installed from extensions.gnome.org), the extension runs the bundled
+// lamplight.py itself.
 
 import Clutter from 'gi://Clutter';
 import Gio from 'gi://Gio';
+import GLib from 'gi://GLib';
 import GObject from 'gi://GObject';
+import Shell from 'gi://Shell';
 import St from 'gi://St';
 
 import {Extension} from 'resource:///org/gnome/shell/extensions/extension.js';
@@ -43,8 +48,10 @@ const DIRECTIONS = {
 
 const SWATCHES = ['ff0000', 'ff5500', 'ffcc00', '00ff00', '00ffff', '0000ff', '8000ff', 'ff2090', 'ffffff'];
 const STATUS = {
-    'no-access': 'No permission (see README)',
+    'no-access': 'Needs one-time setup',
+    'no-python': 'Needs Python 3 with PyGObject',
 };
+const RULES_FILE = '/etc/udev/rules.d/70-lamplight-extension.rules';
 
 const MIN_PERIOD = 0.5, MAX_PERIOD = 20;
 
@@ -95,7 +102,7 @@ class ColorRow extends PopupMenu.PopupBaseMenuItem {
 
 const LightingToggle = GObject.registerClass(
 class LightingToggle extends QuickMenuToggle {
-    constructor(settings) {
+    constructor(settings, ext) {
         super({title: 'Lighting', iconName: 'keyboard-brightness-symbolic', toggleMode: true});
         this._settings = settings;
         settings.bind('enabled', this, 'checked', Gio.SettingsBindFlags.DEFAULT);
@@ -133,8 +140,11 @@ class LightingToggle extends QuickMenuToggle {
         this._direction = new PopupMenu.PopupSubMenuMenuItem('', false);
         this.menu.addMenuItem(this._direction);
 
+        this._setupItem = this.menu.addAction('Set up keyboard access…', () => ext.setupAccess());
+
         this.menu.addMenuItem(new PopupMenu.PopupSeparatorMenuItem());
-        this.menu.addSettingsAction('Lighting Settings', APP_DESKTOP);
+        if (Shell.AppSystem.get_default().lookup_app(APP_DESKTOP))  // app comes with the package
+            this.menu.addSettingsAction('Lighting Settings', APP_DESKTOP);
 
         this._fitToScreen(this._modeMenu);
         this._fitToScreen(this._direction);
@@ -178,6 +188,7 @@ class LightingToggle extends QuickMenuToggle {
         const mode = s.get_string('mode');
         const status = s.get_string('status');
         this.visible = status !== 'no-device';
+        this._setupItem.visible = status === 'no-access';
         this._syncing = true;
         for (const [m, item] of this._modeItems)
             item.setOrnament(m === mode ? PopupMenu.Ornament.CHECK : PopupMenu.Ornament.NO_DOT);
@@ -216,9 +227,9 @@ class LightingToggle extends QuickMenuToggle {
 
 const Indicator = GObject.registerClass(
 class Indicator extends SystemIndicator {
-    constructor(settings) {
+    constructor(settings, ext) {
         super();
-        this.quickSettingsItems.push(new LightingToggle(settings));
+        this.quickSettingsItems.push(new LightingToggle(settings, ext));
     }
 
     destroy() {
@@ -229,19 +240,104 @@ class Indicator extends SystemIndicator {
 
 export default class LamplightExtension extends Extension {
     enable() {
-        // The schema ships with the lamplight package, not with the extension.
-        if (!Gio.SettingsSchemaSource.get_default().lookup(SCHEMA, true)) {
-            console.warn('lamplight: package not installed; see https://github.com/egeisik35/lamplight');
-            return;
-        }
-        this._settings = new Gio.Settings({schema_id: SCHEMA});
-        this._indicator = new Indicator(this._settings);
+        this._packaged = !!Gio.SettingsSchemaSource.get_default().lookup(SCHEMA, true);
+        this._settings = this._packaged
+            ? new Gio.Settings({schema_id: SCHEMA}) : this.getSettings(SCHEMA);
+        this._indicator = new Indicator(this._settings, this);
         Main.panel.statusArea.quickSettings.addExternalIndicator(this._indicator);
+        // Stays enabled on the lock screen so the bundled service keeps
+        // following "turn off with screen"; the tile is hidden there.
+        Main.sessionMode.connectObject('updated', () => this._syncLocked(), this);
+        this._syncLocked();
+        this._restarts = 0;
+        if (!this._packaged)
+            this._startService();
     }
 
     disable() {
+        Main.sessionMode.disconnectObject(this);
+        if (this._restartId)
+            GLib.source_remove(this._restartId);
+        this._restartId = null;
+        const service = this._service;
+        this._service = null;
+        service?.send_signal(15);  // SIGTERM: the service exits, keeping the colors
         this._indicator?.destroy();
         this._indicator = null;
         this._settings = null;
+    }
+
+    _syncLocked() {
+        this._indicator.visible = !Main.sessionMode.isLocked;
+    }
+
+    _script() {
+        const bundled = GLib.build_filenamev([this.path, 'lamplight.py']);
+        return GLib.file_test(bundled, GLib.FileTest.EXISTS)
+            ? [GLib.find_program_in_path('python3'), bundled]
+            : [GLib.find_program_in_path('lamplight')];
+    }
+
+    _startService() {
+        const argv = this._script();
+        if (argv.includes(null)) {
+            this._settings.set_string('status', 'no-python');
+            return;
+        }
+        const launcher = new Gio.SubprocessLauncher({
+            flags: Gio.SubprocessFlags.STDOUT_SILENCE | Gio.SubprocessFlags.STDERR_PIPE,
+        });
+        launcher.setenv('GSETTINGS_SCHEMA_DIR', GLib.build_filenamev([this.path, 'schemas']), true);
+        const proc = launcher.spawnv([...argv, 'service']);
+        this._service = proc;
+        proc.communicate_utf8_async(null, null, (p, res) => {
+            let stderr = '';
+            try {
+                [, , stderr] = p.communicate_utf8_finish(res);
+            } catch {}
+            if (this._service !== p)
+                return;  // stopped by disable()
+            this._service = null;
+            console.warn(`lamplight: service exited: ${stderr}`);
+            if (stderr?.includes('PyGObject')) {
+                this._settings.set_string('status', 'no-python');
+                return;
+            }
+            if (this._restarts++ < 5) {
+                this._restartId = GLib.timeout_add_seconds(GLib.PRIORITY_DEFAULT, 3, () => {
+                    this._restartId = null;
+                    this._startService();
+                    return GLib.SOURCE_REMOVE;
+                });
+            }
+        });
+    }
+
+    // One-time root step: allow the logged-in user to use the LampArray
+    // devices present now. Static rules only; nothing user-writable runs as
+    // root later.
+    setupAccess() {
+        const argv = this._script();
+        if (argv.includes(null))
+            return;
+        const rules = Gio.Subprocess.new([...argv, 'udev-rules'],
+            Gio.SubprocessFlags.STDOUT_PIPE | Gio.SubprocessFlags.STDERR_SILENCE);
+        rules.communicate_utf8_async(null, null, (p, res) => {
+            const [, out] = p.communicate_utf8_finish(res);
+            if (!p.get_successful() || !out.trim())
+                return;
+            const tmp = GLib.build_filenamev([GLib.get_user_runtime_dir(), 'lamplight.rules']);
+            GLib.file_set_contents(tmp, `# Lamplight: access to keyboard lighting\n${out}`);
+            const install = Gio.Subprocess.new(['pkexec', 'sh', '-c',
+                `install -m644 "$1" ${RULES_FILE} && udevadm control --reload-rules && ` +
+                'udevadm trigger --subsystem-match=hidraw && udevadm settle', 'sh', tmp],
+            Gio.SubprocessFlags.NONE);
+            install.wait_check_async(null, (q, r) => {
+                try {
+                    q.wait_check_finish(r);
+                    Main.notify('Lighting', 'Keyboard access is set up.');
+                } catch {}  // cancelled password prompt: nothing to do
+            });
+        });
     }
 }
