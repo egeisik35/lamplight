@@ -4,6 +4,7 @@
 
 [![test](https://github.com/egeisik35/lamplight/actions/workflows/test.yml/badge.svg)](https://github.com/egeisik35/lamplight/actions/workflows/test.yml)
 ![license](https://img.shields.io/badge/license-MIT-blue)
+[![GNOME Extensions](https://img.shields.io/badge/GNOME_Extensions-Lamplight-4a86cf?logo=gnome&logoColor=white)](https://extensions.gnome.org/extension/11264/lamplight/)
 
 <p align="center">
   <img src="docs/app.png" alt="Lamplight app with live keyboard preview" width="420">
@@ -126,8 +127,12 @@ session, and **Lamplight** appears in your app list.
 
 ### GNOME tile
 
-Turn on **Lamplight** in the Extensions app. A **Lighting** tile appears in
-Quick Settings, with a shortcut to the app.
+The tile is installed with the package. Turn on **Lamplight** in the
+Extensions app, and a **Lighting** tile appears in Quick Settings, with a
+shortcut to the app. It is also on
+[GNOME Extensions](https://extensions.gnome.org/extension/11264/lamplight/),
+which delivers tile updates automatically; it still needs the lamplight
+package above.
 
 ## Command line
 
