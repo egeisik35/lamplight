@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <schemalist>
-  <schema id="io.github.egeisik35.Lamplight" path="/io/github/egeisik35/Lamplight/">
+  <schema id="org.gnome.shell.extensions.lamplight" path="/org/gnome/shell/extensions/lamplight/">
     <key name="enabled" type="b">
       <default>true</default>
     </key>

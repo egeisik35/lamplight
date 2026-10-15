@@ -4,6 +4,7 @@ DATADIR = $(PREFIX)/share
 UDEVDIR ?= /usr/lib/udev/rules.d
 USERUNITDIR ?= /usr/lib/systemd/user
 APP = io.github.egeisik35.Lamplight
+SCHEMA = org.gnome.shell.extensions.lamplight
 UUID = lamplight@egeisik35.github.io
 EXT = gnome-extension/$(UUID)
 
@@ -28,7 +29,7 @@ install-service: install-cli
 	rm lamplight.service.out
 	install -d $(DESTDIR)$(USERUNITDIR)/graphical-session.target.wants
 	ln -sf ../lamplight.service $(DESTDIR)$(USERUNITDIR)/graphical-session.target.wants/lamplight.service
-	install -Dm644 data/$(APP).gschema.xml $(DESTDIR)$(DATADIR)/glib-2.0/schemas/$(APP).gschema.xml
+	install -Dm644 data/$(SCHEMA).gschema.xml $(DESTDIR)$(DATADIR)/glib-2.0/schemas/$(SCHEMA).gschema.xml
 	if [ -z "$(DESTDIR)" ]; then glib-compile-schemas $(DATADIR)/glib-2.0/schemas; fi
 
 install-app: install-service
@@ -48,7 +49,7 @@ uninstall:
 		$(DESTDIR)$(UDEVDIR)/70-lamplight.rules \
 		$(DESTDIR)$(USERUNITDIR)/lamplight.service \
 		$(DESTDIR)$(USERUNITDIR)/graphical-session.target.wants/lamplight.service \
-		$(DESTDIR)$(DATADIR)/glib-2.0/schemas/$(APP).gschema.xml \
+		$(DESTDIR)$(DATADIR)/glib-2.0/schemas/$(SCHEMA).gschema.xml \
 		$(DESTDIR)$(DATADIR)/applications/$(APP).desktop \
 		$(DESTDIR)$(DATADIR)/metainfo/$(APP).metainfo.xml \
 		$(DESTDIR)$(DATADIR)/icons/hicolor/scalable/apps/$(APP).svg
@@ -60,6 +61,6 @@ test:
 # without the package.
 zip:
 	gnome-extensions pack --force --extra-source=../../lamplight.py \
-		--schema=../../data/$(APP).gschema.xml $(EXT)
+		--schema=../../data/$(SCHEMA).gschema.xml $(EXT)
 
 .PHONY: install install-cli install-service install-app install-extension uninstall test zip

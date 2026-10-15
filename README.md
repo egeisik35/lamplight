@@ -203,13 +203,13 @@ LampArray reports from the HID Usage Tables (Lighting and Illumination page,
 | LampArrayControl | firmware (autonomous) mode on or off |
 
 `lamplight service` runs in the background as a systemd user service. It
-reads the settings (GSettings schema `io.github.egeisik35.Lamplight`), renders
+reads the settings (GSettings schema `org.gnome.shell.extensions.lamplight`), renders
 the effect, and follows the screen saver and suspend. The app and the GNOME
 tile only change settings. You can script it too:
 
 ```sh
-gsettings set io.github.egeisik35.Lamplight mode wave
-gsettings set io.github.egeisik35.Lamplight color 'ff0000'
+gsettings set org.gnome.shell.extensions.lamplight mode wave
+gsettings set org.gnome.shell.extensions.lamplight color 'ff0000'
 ```
 
 ### Color accuracy
@@ -221,8 +221,8 @@ channel until white looks white on your keyboard. The same settings work from
 a terminal:
 
 ```sh
-gsettings set io.github.egeisik35.Lamplight white-balance '(1.0, 1.0, 0.63)'
-gsettings set io.github.egeisik35.Lamplight gamma 2.2   # 1.0 sends raw values
+gsettings set org.gnome.shell.extensions.lamplight white-balance '(1.0, 1.0, 0.63)'
+gsettings set org.gnome.shell.extensions.lamplight gamma 2.2   # 1.0 sends raw values
 ```
 
 LEDs show purer colors than a screen, so a perfect match is not possible;

@@ -9,8 +9,5 @@
     "51"
   ],
   "url": "https://github.com/egeisik35/lamplight",
-  "session-modes": [
-    "user",
-    "unlock-dialog"
-  ]
+  "settings-schema": "org.gnome.shell.extensions.lamplight"
 }

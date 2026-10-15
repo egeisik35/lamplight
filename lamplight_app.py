@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Lamplight settings app (GTK 4 / libadwaita).
 
-Edits the shared io.github.egeisik35.Lamplight settings; `lamplight service`
+Edits the shared org.gnome.shell.extensions.lamplight settings; `lamplight service`
 applies them to the hardware, so changes keep working after the app closes.
 """
 import math

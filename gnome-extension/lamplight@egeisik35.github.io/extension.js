@@ -1,9 +1,10 @@
 // Lamplight: Quick Settings tile for HID LampArray (Dynamic Lighting) devices.
 // The lamplight service drives the hardware from the shared
-// io.github.egeisik35.Lamplight settings; this tile only edits them.
+// org.gnome.shell.extensions.lamplight settings; this tile only edits them.
 // With the lamplight package installed, systemd runs that service. Without
 // it (installed from extensions.gnome.org), the extension runs the bundled
-// lamplight.py itself.
+// lamplight.py itself. That part is Python because it needs ioctl() on
+// /dev/hidraw (HID feature reports), which GJS cannot call.
 
 import Clutter from 'gi://Clutter';
 import Gio from 'gi://Gio';
@@ -18,7 +19,7 @@ import * as PopupMenu from 'resource:///org/gnome/shell/ui/popupMenu.js';
 import {QuickMenuToggle, SystemIndicator} from 'resource:///org/gnome/shell/ui/quickSettings.js';
 import {Slider} from 'resource:///org/gnome/shell/ui/slider.js';
 
-const SCHEMA = 'io.github.egeisik35.Lamplight';
+const SCHEMA = 'org.gnome.shell.extensions.lamplight';
 const APP_DESKTOP = 'io.github.egeisik35.Lamplight.desktop';
 
 const MODES = [
@@ -52,6 +53,26 @@ const STATUS = {
     'no-python': 'Needs Python 3 with PyGObject',
 };
 const RULES_FILE = '/etc/udev/rules.d/70-lamplight-extension.rules';
+
+// Runs as root through pkexec. Takes only HID IDs as arguments, rejects
+// anything that is not BUS:VENDOR:PRODUCT hex, and writes a fixed rule
+// shape, so no user-controlled file or text ends up in the rule.
+const INSTALL_RULES = `
+set -e
+f=${RULES_FILE}
+echo '# Lamplight: let the logged-in user control keyboard lighting' > "$f.tmp"
+for id in "$@"; do
+    case "$id" in
+    [0-9A-F][0-9A-F][0-9A-F][0-9A-F]:[0-9A-F][0-9A-F][0-9A-F][0-9A-F]:[0-9A-F][0-9A-F][0-9A-F][0-9A-F]) ;;
+    *) rm -f "$f.tmp"; exit 2 ;;
+    esac
+    echo "SUBSYSTEM==\\"hidraw\\", KERNELS==\\"$id.*\\", TAG+=\\"uaccess\\"" >> "$f.tmp"
+done
+chmod 644 "$f.tmp"
+mv "$f.tmp" "$f"
+udevadm control --reload-rules
+udevadm trigger --subsystem-match=hidraw
+udevadm settle`;
 
 const MIN_PERIOD = 0.5, MAX_PERIOD = 20;
 
@@ -242,33 +263,27 @@ export default class LamplightExtension extends Extension {
     enable() {
         this._packaged = !!Gio.SettingsSchemaSource.get_default().lookup(SCHEMA, true);
         this._settings = this._packaged
-            ? new Gio.Settings({schema_id: SCHEMA}) : this.getSettings(SCHEMA);
+            ? new Gio.Settings({schema_id: SCHEMA}) : this.getSettings();
         this._indicator = new Indicator(this._settings, this);
         Main.panel.statusArea.quickSettings.addExternalIndicator(this._indicator);
-        // Stays enabled on the lock screen so the bundled service keeps
-        // following "turn off with screen"; the tile is hidden there.
-        Main.sessionMode.connectObject('updated', () => this._syncLocked(), this);
-        this._syncLocked();
         this._restarts = 0;
         if (!this._packaged)
             this._startService();
     }
 
     disable() {
-        Main.sessionMode.disconnectObject(this);
         if (this._restartId)
             GLib.source_remove(this._restartId);
         this._restartId = null;
         const service = this._service;
         this._service = null;
-        service?.send_signal(15);  // SIGTERM: the service exits, keeping the colors
+        // SIGTERM: the service exits, keeping the colors. When this runs because
+        // the screen locked, it turns the lights off first if the user chose
+        // "turn off with screen".
+        service?.send_signal(15);
         this._indicator?.destroy();
         this._indicator = null;
         this._settings = null;
-    }
-
-    _syncLocked() {
-        this._indicator.visible = !Main.sessionMode.isLocked;
     }
 
     _script() {
@@ -313,9 +328,9 @@ export default class LamplightExtension extends Extension {
         });
     }
 
-    // One-time root step: allow the logged-in user to use the LampArray
-    // devices present now. Static rules only; nothing user-writable runs as
-    // root later.
+    // One-time root step, only on explicit user action: allow the
+    // logged-in user to use the LampArray devices present now. Static rules
+    // only; nothing runs as root afterwards.
     setupAccess() {
         const argv = this._script();
         if (argv.includes(null))
@@ -324,19 +339,20 @@ export default class LamplightExtension extends Extension {
             Gio.SubprocessFlags.STDOUT_PIPE | Gio.SubprocessFlags.STDERR_SILENCE);
         rules.communicate_utf8_async(null, null, (p, res) => {
             const [, out] = p.communicate_utf8_finish(res);
-            if (!p.get_successful() || !out.trim())
+            const ids = [...(out ?? '').matchAll(/KERNELS=="([0-9A-F:]+)\.\*"/g)].map(m => m[1]);
+            if (!p.get_successful() || !ids.length)
                 return;
-            const tmp = GLib.build_filenamev([GLib.get_user_runtime_dir(), 'lamplight.rules']);
-            GLib.file_set_contents(tmp, `# Lamplight: access to keyboard lighting\n${out}`);
-            const install = Gio.Subprocess.new(['pkexec', 'sh', '-c',
-                `install -m644 "$1" ${RULES_FILE} && udevadm control --reload-rules && ` +
-                'udevadm trigger --subsystem-match=hidraw && udevadm settle', 'sh', tmp],
-            Gio.SubprocessFlags.NONE);
+            const install = Gio.Subprocess.new(
+                ['pkexec', '/bin/sh', '-c', INSTALL_RULES, 'sh', ...ids], Gio.SubprocessFlags.NONE);
             install.wait_check_async(null, (q, r) => {
                 try {
                     q.wait_check_finish(r);
-                    Main.notify('Lighting', 'Keyboard access is set up.');
-                } catch {}  // cancelled password prompt: nothing to do
+                } catch {
+                    return;  // cancelled password prompt: nothing to do
+                }
+                Main.notify('Lighting', 'Keyboard access is set up.');
+                this._restarts = 0;
+                this._service?.send_signal(15);  // restart the bundled service to pick up access
             });
         });
     }

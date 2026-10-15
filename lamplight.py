@@ -16,7 +16,7 @@ import struct
 import sys
 import time
 
-__version__ = '0.2.0'
+__version__ = '0.2.1'
 
 LIGHTING_PAGE = 0x59
 REPORTS = {  # LampArray collection usages
@@ -292,7 +292,7 @@ def frame_interval(devices):
 # them and on any desktop.
 # ---------------------------------------------------------------------------
 
-SCHEMA = 'io.github.egeisik35.Lamplight'
+SCHEMA = 'org.gnome.shell.extensions.lamplight'
 
 # libadwaita accent colors (GNOME 47+)
 ACCENTS = {
@@ -345,6 +345,7 @@ class Service:
         self.interface = (Gio.Settings.new('org.gnome.desktop.interface')
                           if schema and schema.has_key('accent-color') else None)
         self.devices, self.screen_off, self.timer = [], False, 0
+        self.session = Gio.bus_get_sync(Gio.BusType.SESSION, None)
 
         self.settings.connect('changed', self.on_setting)
         self.backlight, self.max_level, self.level = None, 0, 0
@@ -396,6 +397,24 @@ class Service:
             self.settings.set_double('brightness', level / self.max_level)
         else:
             self.update()
+
+    def shutdown(self):
+        """Stopping while the screen is locked: honor turn-off-with-screen.
+
+        The GNOME extension stops this service when the screen locks, which
+        can race the ScreenSaver signal, so ask once more.
+        """
+        try:
+            active = self.session.call_sync(
+                'org.gnome.ScreenSaver', '/org/gnome/ScreenSaver', 'org.gnome.ScreenSaver',
+                'GetActive', None, None, 0, 500, None).unpack()[0]
+        except Exception:
+            active = self.screen_off
+        if active and self.devices and self.settings.get_boolean('off-with-screen'):
+            try:
+                apply(self.devices, normalize({'mode': 'off'}), 0, True)
+            except OSError:
+                pass
 
     def set_status(self, status):
         if self.settings.get_string('status') != status:
@@ -474,10 +493,16 @@ def serve():
         signal_add = GLibUnix.signal_add
     except (ImportError, ValueError):  # GLib < 2.80
         signal_add = GLib.unix_signal_add
-    Service()
+    service = Service()
     loop = GLib.MainLoop()
+
+    def stop():
+        service.shutdown()
+        loop.quit()
+        return GLib.SOURCE_REMOVE
+
     for sig in (2, 15):  # SIGINT, SIGTERM: stop and keep the last colors
-        signal_add(GLib.PRIORITY_DEFAULT, sig, lambda: loop.quit() or GLib.SOURCE_REMOVE)
+        signal_add(GLib.PRIORITY_DEFAULT, sig, stop)
     loop.run()
     return 0
 
