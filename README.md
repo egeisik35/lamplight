@@ -7,7 +7,7 @@
 [![GNOME Extensions](https://img.shields.io/badge/GNOME_Extensions-Lamplight-4a86cf?logo=gnome&logoColor=white)](https://extensions.gnome.org/extension/11264/lamplight/)
 
 <p align="center">
-  <img src="docs/app.png" alt="Lamplight settings window with live keyboard preview" width="420">
+  <img src="docs/settings.png" alt="Lamplight settings window with live keyboard preview" width="420">
   <img src="docs/tile.png" alt="Lighting tile in GNOME Quick Settings" width="380">
 </p>
 
