@@ -1,7 +1,7 @@
 {
   "uuid": "lamplight@egeisik35.github.io",
   "name": "Lamplight",
-  "description": "RGB keyboard lighting for laptops and devices with Windows Dynamic Lighting (HID LampArray), such as ASUS Vivobook S models: effects, colors, brightness and speed, in sync with the Fn backlight keys.\n\nAfter installing, open the Lighting tile and choose \"Set up keyboard access\" once (asks for your password). Needs Python 3 with PyGObject, which GNOME systems normally have. The optional lamplight package adds a settings app and color calibration: https://github.com/egeisik35/lamplight",
+  "description": "RGB keyboard lighting for laptops and devices with Windows Dynamic Lighting (HID LampArray), such as ASUS Vivobook S models: effects, colors, brightness and speed, in sync with the Fn backlight keys.\n\nAfter installing, open the Lighting tile and choose \"Set up keyboard access\" once (asks for your password). Needs Python 3 with PyGObject, which GNOME systems normally have. Settings (live preview, color calibration) are behind the gear icon. More: https://github.com/egeisik35/lamplight",
   "shell-version": [
     "48",
     "49",
@@ -9,5 +9,6 @@
     "51"
   ],
   "url": "https://github.com/egeisik35/lamplight",
-  "settings-schema": "org.gnome.shell.extensions.lamplight"
+  "settings-schema": "org.gnome.shell.extensions.lamplight",
+  "version-name": "0.3.0"
 }

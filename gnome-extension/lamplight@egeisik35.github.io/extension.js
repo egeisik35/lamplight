@@ -10,7 +10,6 @@ import Clutter from 'gi://Clutter';
 import Gio from 'gi://Gio';
 import GLib from 'gi://GLib';
 import GObject from 'gi://GObject';
-import Shell from 'gi://Shell';
 import St from 'gi://St';
 
 import {Extension} from 'resource:///org/gnome/shell/extensions/extension.js';
@@ -19,8 +18,9 @@ import * as PopupMenu from 'resource:///org/gnome/shell/ui/popupMenu.js';
 import {QuickMenuToggle, SystemIndicator} from 'resource:///org/gnome/shell/ui/quickSettings.js';
 import {Slider} from 'resource:///org/gnome/shell/ui/slider.js';
 
+import {backendCommand, setupAccess} from './common.js';
+
 const SCHEMA = 'org.gnome.shell.extensions.lamplight';
-const APP_DESKTOP = 'io.github.egeisik35.Lamplight.desktop';
 
 const MODES = [
     ['solid', 'Solid color'],
@@ -52,27 +52,6 @@ const STATUS = {
     'no-access': 'Needs one-time setup',
     'no-python': 'Needs Python 3 with PyGObject',
 };
-const RULES_FILE = '/etc/udev/rules.d/70-lamplight-extension.rules';
-
-// Runs as root through pkexec. Takes only HID IDs as arguments, rejects
-// anything that is not BUS:VENDOR:PRODUCT hex, and writes a fixed rule
-// shape, so no user-controlled file or text ends up in the rule.
-const INSTALL_RULES = `
-set -e
-f=${RULES_FILE}
-echo '# Lamplight: let the logged-in user control keyboard lighting' > "$f.tmp"
-for id in "$@"; do
-    case "$id" in
-    [0-9A-F][0-9A-F][0-9A-F][0-9A-F]:[0-9A-F][0-9A-F][0-9A-F][0-9A-F]:[0-9A-F][0-9A-F][0-9A-F][0-9A-F]) ;;
-    *) rm -f "$f.tmp"; exit 2 ;;
-    esac
-    echo "SUBSYSTEM==\\"hidraw\\", KERNELS==\\"$id.*\\", TAG+=\\"uaccess\\"" >> "$f.tmp"
-done
-chmod 644 "$f.tmp"
-mv "$f.tmp" "$f"
-udevadm control --reload-rules
-udevadm trigger --subsystem-match=hidraw
-udevadm settle`;
 
 const MIN_PERIOD = 0.5, MAX_PERIOD = 20;
 
@@ -164,8 +143,7 @@ class LightingToggle extends QuickMenuToggle {
         this._setupItem = this.menu.addAction('Set up keyboard access…', () => ext.setupAccess());
 
         this.menu.addMenuItem(new PopupMenu.PopupSeparatorMenuItem());
-        if (Shell.AppSystem.get_default().lookup_app(APP_DESKTOP))  // app comes with the package
-            this.menu.addSettingsAction('Lighting Settings', APP_DESKTOP);
+        this.menu.addAction('Lighting Settings', () => ext.openPreferences());
 
         this._fitToScreen(this._modeMenu);
         this._fitToScreen(this._direction);
@@ -301,15 +279,8 @@ export default class LamplightExtension extends Extension {
         this._settings = null;
     }
 
-    _script() {
-        const bundled = GLib.build_filenamev([this.path, 'lamplight.py']);
-        return GLib.file_test(bundled, GLib.FileTest.EXISTS)
-            ? [GLib.find_program_in_path('python3'), bundled]
-            : [GLib.find_program_in_path('lamplight')];
-    }
-
     _startService() {
-        const argv = this._script();
+        const argv = backendCommand(this.path);
         if (argv.includes(null)) {
             this._settings.set_string('status', 'no-python');
             return;
@@ -343,32 +314,11 @@ export default class LamplightExtension extends Extension {
         });
     }
 
-    // One-time root step, only on explicit user action: allow the
-    // logged-in user to use the LampArray devices present now. Static rules
-    // only; nothing runs as root afterwards.
     setupAccess() {
-        const argv = this._script();
-        if (argv.includes(null))
-            return;
-        const rules = Gio.Subprocess.new([...argv, 'udev-rules'],
-            Gio.SubprocessFlags.STDOUT_PIPE | Gio.SubprocessFlags.STDERR_SILENCE);
-        rules.communicate_utf8_async(null, null, (p, res) => {
-            const [, out] = p.communicate_utf8_finish(res);
-            const ids = [...(out ?? '').matchAll(/KERNELS=="([0-9A-F:]+)\.\*"/g)].map(m => m[1]);
-            if (!p.get_successful() || !ids.length)
-                return;
-            const install = Gio.Subprocess.new(
-                ['pkexec', '/bin/sh', '-c', INSTALL_RULES, 'sh', ...ids], Gio.SubprocessFlags.NONE);
-            install.wait_check_async(null, (q, r) => {
-                try {
-                    q.wait_check_finish(r);
-                } catch {
-                    return;  // cancelled password prompt: nothing to do
-                }
-                Main.notify('Lighting', 'Keyboard access is set up.');
-                this._restarts = 0;
-                this._service?.send_signal(15);  // restart the bundled service to pick up access
-            });
+        setupAccess(this.path, () => {
+            Main.notify('Lighting', 'Keyboard access is set up.');
+            this._restarts = 0;
+            this._service?.send_signal(15);  // restart the bundled service to pick up access
         });
     }
 }

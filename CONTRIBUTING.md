@@ -1,7 +1,8 @@
 # Contributing
 
 Thanks for helping. Lamplight is small on purpose: one Python file for the
-hardware, one for the app, and one JavaScript file for the GNOME tile.
+hardware and service, and the GNOME extension (`extension.js` for the tile,
+`prefs.js` for the settings window, `common.js` shared).
 
 ## Device reports
 
@@ -29,7 +30,7 @@ xxd -p /sys/class/hidraw/hidrawN/device/report_descriptor
 
 ## Releases
 
-1. Bump `__version__` in `lamplight.py`, `pkgver` in `PKGBUILD`, and add a
-   `<release>` to `data/io.github.egeisik35.Lamplight.metainfo.xml`.
+1. Bump `__version__` in `lamplight.py`, `version-name` in the extension's
+   `metadata.json`, and `pkgver` in `PKGBUILD`.
 2. Tag `vX.Y.Z`, then update `sha256sums` in `PKGBUILD` and regenerate
    `.SRCINFO` with `makepkg --printsrcinfo > .SRCINFO`.

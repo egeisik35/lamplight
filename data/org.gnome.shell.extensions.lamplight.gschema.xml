@@ -59,6 +59,10 @@
       <range min="1.0" max="3.0"/>
       <default>2.2</default>
     </key>
+    <key name="lamp-count" type="i">
+      <summary>Written by the service: lamps on the largest device (0 = none found)</summary>
+      <default>0</default>
+    </key>
     <key name="status" type="s">
       <summary>Written by the service: empty, 'no-device' or 'no-access'</summary>
       <default>''</default>

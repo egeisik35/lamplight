@@ -7,15 +7,15 @@
 [![GNOME Extensions](https://img.shields.io/badge/GNOME_Extensions-Lamplight-4a86cf?logo=gnome&logoColor=white)](https://extensions.gnome.org/extension/11264/lamplight/)
 
 <p align="center">
-  <img src="docs/app.png" alt="Lamplight app with live keyboard preview" width="420">
+  <img src="docs/app.png" alt="Lamplight settings window with live keyboard preview" width="420">
   <img src="docs/tile.png" alt="Lighting tile in GNOME Quick Settings" width="380">
 </p>
 
 On Windows, some laptops let you set the keyboard color under
 *Settings > Personalization > Dynamic Lighting* or in MyASUS. On Linux, the
 keyboard stays on whatever color the firmware chose. Lamplight brings that
-control to Linux: a settings app with a live preview, a GNOME Quick Settings
-tile, and a command-line tool.
+control to Linux as a GNOME extension: a Quick Settings tile, a settings
+window with a live preview, and a command-line tool.
 
 These keyboards speak **HID LampArray**, the open USB HID standard behind
 Dynamic Lighting. ROG-focused tools such as asusctl do not handle it.
@@ -32,8 +32,9 @@ count and lamp positions from the device itself, with no per-model table.
   and GNOME's keyboard brightness
 - Hides itself on computers without a LampArray device
 - No root needed at runtime; a udev rule grants access only to LampArray devices
-- Works on any desktop: a small user service applies the settings, so effects
-  keep running after you close the app
+- Color calibration (white balance and gamma) to match LED colors to the screen
+- A small background service applies the settings; without GNOME, use the CLI
+  or `gsettings`
 
 ## Supported hardware
 
@@ -88,9 +89,12 @@ keyboard. On a single-zone keyboard, they color the whole keyboard at once.
    user to use the keyboard lighting device.
 
 That's all. The extension brings its own backend. It needs Python 3 with
-PyGObject, which GNOME systems normally have. The package below adds the
-settings app (live preview, color calibration) and works on other desktops
-too.
+PyGObject, which GNOME systems normally have. All settings, including the
+live preview and color calibration, are in its settings window: the gear
+icon in Extension Manager, or **Lighting Settings** in the tile.
+
+The packages below install the same thing system-wide, plus the `lamplight`
+command.
 
 ### Arch Linux
 
@@ -121,8 +125,8 @@ cd lamplight
 sudo make install
 ```
 
-You need PyGObject, GTK 4 and libadwaita (`python3-gi`, `gir1.2-adw-1` on
-Debian/Ubuntu; `python3-gobject`, `libadwaita` on Fedora).
+You need PyGObject (`python3-gi` on Debian/Ubuntu, `python3-gobject` on
+Fedora).
 
 `make install` installs everything. To install only some parts:
 
@@ -130,21 +134,19 @@ Debian/Ubuntu; `python3-gobject`, `libadwaita` on Fedora).
 |---------|----------|-------|
 | `sudo make install-cli` | `lamplight` command and udev rule | Python 3.9+ |
 | `sudo make install-service` | CLI + background service | + PyGObject |
-| `sudo make install-app` | service + settings app | + GTK 4, libadwaita |
-| `sudo make install-extension` | service + GNOME Quick Settings tile | + GNOME Shell 48–51 |
+| `sudo make install-extension` | service + GNOME extension (tile and settings window) | + GNOME Shell 48–51 |
 
-The app and the tile both drive the same service, so you can use either or
-both. To remove everything, run `sudo make uninstall`.
+To remove everything, run `sudo make uninstall`.
 
 After installing, log out and back in once. The service starts with your
-session, and **Lamplight** appears in your app list.
+session.
 
 ### GNOME tile
 
 The tile is installed with the package. Turn on **Lamplight** in the
-Extensions app, and a **Lighting** tile appears in Quick Settings, with a
-shortcut to the app. When the package is installed, the tile uses its
-service; otherwise it runs its bundled backend.
+Extensions app, and a **Lighting** tile appears in Quick Settings. When the
+package is installed, the extension uses its service; otherwise it runs its
+bundled backend.
 
 ## Command line
 
@@ -204,8 +206,8 @@ LampArray reports from the HID Usage Tables (Lighting and Illumination page,
 
 `lamplight service` runs in the background as a systemd user service. It
 reads the settings (GSettings schema `org.gnome.shell.extensions.lamplight`), renders
-the effect, and follows the screen saver and suspend. The app and the GNOME
-tile only change settings. You can script it too:
+the effect, and follows the screen saver and suspend. The tile and the
+settings window only change settings. You can script it too:
 
 ```sh
 gsettings set org.gnome.shell.extensions.lamplight mode wave
@@ -216,7 +218,7 @@ gsettings set org.gnome.shell.extensions.lamplight color 'ff0000'
 
 Screens encode colors with a gamma curve, while LEDs respond linearly, and
 each LED channel has its own strength. Lamplight decodes colors with gamma 2.2
-by default, and the app's **Color Calibration** section lets you lower a
+by default, and the **Color Calibration** section of the settings window lets you lower a
 channel until white looks white on your keyboard. The same settings work from
 a terminal:
 

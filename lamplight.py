@@ -16,7 +16,7 @@ import struct
 import sys
 import time
 
-__version__ = '0.2.1'
+__version__ = '0.3.0'
 
 LIGHTING_PAGE = 0x59
 REPORTS = {  # LampArray collection usages
@@ -375,7 +375,7 @@ class Service:
         self.rescan()
 
     def on_setting(self, _settings, key):
-        if key == 'status':
+        if key in ('status', 'lamp-count'):
             return
         if key == 'brightness' and self.max_level:
             level = hardware_level(self.settings.get_double('brightness'), self.max_level)
@@ -425,6 +425,9 @@ class Service:
             d.close()
         self.devices, seen = find_devices()
         self.set_status('' if self.devices else 'no-access' if seen else 'no-device')
+        lamps = max((d.count for d in self.devices), default=0)
+        if self.settings.get_int('lamp-count') != lamps:  # lets the preview match the hardware
+            self.settings.set_int('lamp-count', lamps)
         self.update()
         return self.GLib.SOURCE_REMOVE
 
