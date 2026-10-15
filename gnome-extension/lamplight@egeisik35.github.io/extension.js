@@ -175,20 +175,28 @@ class LightingToggle extends QuickMenuToggle {
     }
 
     // Quick Settings menus do not scroll, so an expanded list could run off
-    // the screen. Cap each submenu to the space left below the menu at the
-    // moment it opens, and let it scroll inside that.
+    // the screen. While a list is open, hide the other rows (accordion), then
+    // cap the list to the space left below the menu and let it scroll.
     _fitToScreen(item) {
         const sub = item.menu;
         const open = sub.open.bind(sub);
         sub._needsScrollbar = () => true;
+        sub.connect('open-state-changed', (_m, isOpen) => {
+            if (!isOpen && this._picking === item) {
+                this._picking = null;
+                this.sync();
+            }
+        });
         sub.open = params => {
+            this._picking = item;
+            this.sync();
             const scale = St.ThemeContext.get_for_stage(global.stage).scale_factor;
             const [, top] = this.menu.actor.get_transformed_position();
             const [, rest] = this.menu.box.get_preferred_height(-1);
             const monitor = Main.layoutManager.findIndexForActor(this.menu.actor);
             const work = Main.layoutManager.getWorkAreaForMonitor(monitor);
             const spare = work.y + work.height - top - rest - 24 * scale;
-            sub.actor.style = `max-height: ${Math.max(120 * scale, spare) / scale}px;`;
+            sub.actor.style = `max-height: ${Math.max(96 * scale, spare) / scale}px;`;
             return open(params);
         };
     }
@@ -224,6 +232,13 @@ class LightingToggle extends QuickMenuToggle {
         this._brightness.visible = mode !== 'firmware';
         this._brightness.slider.value = s.get_double('brightness');
         this._speed.slider.value = (MAX_PERIOD - s.get_double('speed')) / (MAX_PERIOD - MIN_PERIOD);
+        if (this._picking) {
+            for (const row of [this._modeMenu, this._color, this._color2,
+                this._brightness, this._speed, this._direction]) {
+                if (row !== this._picking)
+                    row.visible = false;
+            }
+        }
         this._syncing = false;
         this.subtitle = STATUS[status] ?? modeLabel;
     }
