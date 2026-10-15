@@ -7,8 +7,7 @@
 [![GNOME Extensions](https://img.shields.io/badge/GNOME_Extensions-Lamplight-4a86cf?logo=gnome&logoColor=white)](https://extensions.gnome.org/extension/11264/lamplight/)
 
 <p align="center">
-  <img src="docs/settings.png" alt="Lamplight settings window with live keyboard preview" width="420">
-  <img src="docs/tile.png" alt="Lighting tile in GNOME Quick Settings" width="380">
+  <img src="docs/screenshot.png" alt="Lighting tile in GNOME Quick Settings and the Lamplight settings window with live keyboard preview" width="820">
 </p>
 
 On Windows, some laptops let you set the keyboard color under
@@ -60,9 +59,16 @@ descriptor correctly.
 | Acer Predator Helios 16 PH16-72 (per key) | Sunrex `05af:666a` | [lamparray-kbd](https://github.com/usamathpc/lamparray-kbd) | no |
 | GIGABYTE GAMING A16 | `0414:8105` / `0414:8104` | [Gigabyte-Gaming-A16-Linux-KB-Drivers](https://github.com/Luminous418/Gigabyte-Gaming-A16-Linux-KB-Drivers) | no |
 
-Run `lamplight info` to check your device. Please
-[open a device report](https://github.com/egeisik35/lamplight/issues/new?template=device-report.yml),
-whatever the result.
+To check your device, run `lamplight info` (package install) or, with the
+extension from GNOME Extensions:
+
+```sh
+python3 ~/.local/share/gnome-shell/extensions/lamplight@egeisik35.github.io/lamplight.py info
+```
+
+Please
+[open a device report](https://github.com/egeisik35/lamplight/issues/new?template=device-report.yml)
+with the output, whatever the result.
 
 **Not supported:** some vendors add Dynamic Lighting through a Windows-only
 driver instead of the device firmware. Those devices do not show a LampArray
@@ -175,7 +181,19 @@ over a CLI command during animated effects. Stop it first with
 
 ## Troubleshooting
 
-**`Permission denied`**: the udev rule did not apply. Run:
+**Tile says "Needs one-time setup"**: open the tile's menu and choose
+**Set up keyboard access…**. Do it again after connecting a new lighting
+device.
+
+**Tile says "Needs Python 3 with PyGObject"**: install `python3-gi`
+(Debian/Ubuntu), `python3-gobject` (Fedora) or `python-gobject` (Arch), then
+log out and back in.
+
+**No Lighting tile at all**: no LampArray device was found. The tile hides on
+computers without one. Check with the command under
+[Supported hardware](#supported-hardware).
+
+**`Permission denied`** (package install): the udev rule did not apply. Run:
 
 ```sh
 sudo udevadm control --reload-rules
@@ -186,9 +204,11 @@ sudo udevadm trigger --subsystem-match=hidraw
 LampArray. Please open a device report with the output of
 `grep -H HID_NAME /sys/class/hidraw/*/device/uevent`.
 
-**Nothing changes when I pick a color**: check that the service runs:
-`systemctl --user status lamplight`. Start it with
-`systemctl --user enable --now lamplight`.
+**Nothing changes when I pick a color**: with the package, check the service:
+`systemctl --user status lamplight`, and start it with
+`systemctl --user enable --now lamplight`. With the store extension, turn it
+off and on again in Extension Manager. Logs:
+`journalctl --user -b | grep -i lamplight`.
 
 ## How it works
 
