@@ -286,7 +286,13 @@ and LEDs on the same interface would expose its button reports.
 ```sh
 make test     # unit tests against real descriptors (see tests/THIRD_PARTY.md)
 make zip      # GNOME extension zip for extensions.gnome.org
+sudo python3 tests/uhid_lamparray.py   # end-to-end on virtual keyboards
 ```
+
+`tests/uhid_lamparray.py` creates virtual LampArray keyboards through
+`/dev/uhid` (Microsoft reference, Lenovo LOQ, ASUS ITE 5570), answers their
+feature reports like firmware, and checks detection, udev rules, lamp
+positions and colors. Real keyboards on the machine are not touched.
 
 ## Related projects
 
