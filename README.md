@@ -6,6 +6,18 @@
 ![license](https://img.shields.io/badge/license-MIT-blue)
 [![GNOME Extensions](https://img.shields.io/badge/GNOME_Extensions-Lamplight-4a86cf?logo=gnome&logoColor=white)](https://extensions.gnome.org/extension/11264/lamplight/)
 
+> [!IMPORTANT]
+> **Installed from the GNOME Extensions site and no Lighting tile appears?**
+> The site still serves an old first version while 0.3.0 waits for review.
+> Install 0.3.0 from [Releases](https://github.com/egeisik35/lamplight/releases/latest)
+> instead, then log out and back in:
+>
+> ```sh
+> gnome-extensions install --force lamplight@egeisik35.github.io.shell-extension.zip
+> ```
+>
+> Once the site approves 0.3.0, installs from there update automatically.
+
 <p align="center">
   <img src="docs/screenshot.png" alt="Lighting tile in GNOME Quick Settings and the Lamplight settings window with live keyboard preview" width="820">
 </p>
@@ -86,6 +98,9 @@ keyboard. On a single-zone keyboard, they color the whole keyboard at once.
 ## Install
 
 ### Easiest: GNOME Extensions (GNOME 48–51)
+
+(Until 0.3.0 is approved there, use the zip from
+[Releases](https://github.com/egeisik35/lamplight/releases/latest), see the note at the top.)
 
 1. Open the **Extension Manager** app, or
    [extensions.gnome.org](https://extensions.gnome.org/extension/11264/lamplight/),
