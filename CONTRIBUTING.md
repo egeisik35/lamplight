@@ -32,5 +32,8 @@ xxd -p /sys/class/hidraw/hidrawN/device/report_descriptor
 
 1. Bump `__version__` in `lamplight.py`, `version-name` in the extension's
    `metadata.json`, and `pkgver` in `PKGBUILD`.
-2. Tag `vX.Y.Z`, then update `sha256sums` in `PKGBUILD` and regenerate
+2. Build the service wheel with `pip wheel --no-deps -w dist .` and attach
+   it to the GitHub release with the extension zip. The settings window and
+   the README point to `v<version>/lamplight_hid-<version>-py3-none-any.whl`.
+3. Tag `vX.Y.Z`, then update `sha256sums` in `PKGBUILD` and regenerate
    `.SRCINFO` with `makepkg --printsrcinfo > .SRCINFO`.

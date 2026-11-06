@@ -9,7 +9,8 @@
 > [!NOTE]
 > Lamplight is waiting for review on the GNOME Extensions site. Until then,
 > install the zip from [Releases](https://github.com/egeisik35/lamplight/releases/latest),
-> then log out and back in:
+> then log out and back in, and install the service (step 2 under
+> [Install](#install)):
 >
 > ```sh
 > gnome-extensions install --force lamplight@egeisik35.github.io.shell-extension.zip
@@ -68,12 +69,8 @@ descriptor correctly.
 | Acer Predator Helios 16 PH16-72 (per key) | Sunrex `05af:666a` | [lamparray-kbd](https://github.com/usamathpc/lamparray-kbd) | no |
 | GIGABYTE GAMING A16 | `0414:8105` / `0414:8104` | [Gigabyte-Gaming-A16-Linux-KB-Drivers](https://github.com/Luminous418/Gigabyte-Gaming-A16-Linux-KB-Drivers) | no |
 
-To check your device, run `lamplight info` (package install) or, with the
-extension from GNOME Extensions:
-
-```sh
-python3 ~/.local/share/gnome-shell/extensions/lamplight@egeisik35.github.io/lamplight.py info
-```
+To check your device, run `lamplight info` (with the pip install below, it
+is `~/.local/share/lamplight/venv/bin/lamplight info`).
 
 Please
 [open a device report](https://github.com/egeisik35/lamplight/issues/new?template=device-report.yml)
@@ -102,14 +99,38 @@ keyboard. On a single-zone keyboard, they color the whole keyboard at once.
 1. Open the **Extension Manager** app, or
    [extensions.gnome.org](https://extensions.gnome.org/extension/11264/lamplight/),
    search for **Lamplight** and install it.
-2. Open Quick Settings, open the **Lighting** tile and choose
+2. Install the service that talks to the keyboard. It is a small Python
+   program (`lamplight.py` from this repository), installed with pip for
+   your user only:
+
+   ```sh
+   python3 -m venv --system-site-packages ~/.local/share/lamplight/venv
+   ~/.local/share/lamplight/venv/bin/pip install https://github.com/egeisik35/lamplight/releases/download/v0.4.0/lamplight_hid-0.4.0-py3-none-any.whl
+   ~/.local/share/lamplight/venv/bin/lamplight setup
+   ```
+
+   It needs PyGObject, which GNOME systems normally have (`python3-gi` on
+   Debian/Ubuntu, `python3-gobject` on Fedora, `python-gobject` on Arch). On
+   Debian/Ubuntu, `python3 -m venv` also needs `python3-venv`. The settings
+   window shows the same command with a copy button.
+3. Open Quick Settings, open the **Lighting** tile and choose
    **Set up keyboard access…** once. It asks for your password to allow your
    user to use the keyboard lighting device.
 
-That's all. The extension brings its own backend. It needs Python 3 with
-PyGObject, which GNOME systems normally have. All settings, including the
-live preview and color calibration, are in its settings window: the gear
-icon in Extension Manager, or **Lighting Settings** in the tile.
+That's all. All settings, including the live preview and color calibration,
+are in the extension's settings window: the gear icon in Extension Manager,
+or **Lighting Settings** in the tile.
+
+To update the service, run the `pip install` line with the new version's
+wheel from [Releases](https://github.com/egeisik35/lamplight/releases). To
+remove it:
+
+```sh
+rm -r ~/.local/share/lamplight
+rm ~/.local/share/dbus-1/services/io.github.egeisik35.Lamplight.service
+rm ~/.local/share/glib-2.0/schemas/org.gnome.shell.extensions.lamplight.gschema.xml
+glib-compile-schemas ~/.local/share/glib-2.0/schemas
+```
 
 The packages below install the same thing system-wide, plus the `lamplight`
 command.
@@ -162,9 +183,8 @@ session.
 ### GNOME tile
 
 The tile is installed with the package. Turn on **Lamplight** in the
-Extensions app, and a **Lighting** tile appears in Quick Settings. When the
-package is installed, the extension uses its service; otherwise it runs its
-bundled backend.
+Extensions app, and a **Lighting** tile appears in Quick Settings. It uses
+the package's service, so skip the pip step above.
 
 ## Command line
 
@@ -197,9 +217,11 @@ over a CLI command during animated effects. Stop it first with
 **Set up keyboard access…**. Do it again after connecting a new lighting
 device.
 
-**Tile says "Needs Python 3 with PyGObject"**: install `python3-gi`
-(Debian/Ubuntu), `python3-gobject` (Fedora) or `python-gobject` (Arch), then
-log out and back in.
+**Tile says "Needs the lamplight service"**: install it (step 2 under
+[Install](#install)). If you did, run
+`~/.local/share/lamplight/venv/bin/lamplight service` in a terminal to see
+the error; a PyGObject error means `python3-gi` (Debian/Ubuntu),
+`python3-gobject` (Fedora) or `python-gobject` (Arch) is missing.
 
 **No Lighting tile at all**: no LampArray device was found. The tile hides on
 computers without one. Check with the command under

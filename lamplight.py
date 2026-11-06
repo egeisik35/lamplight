@@ -16,7 +16,7 @@ import struct
 import sys
 import time
 
-__version__ = '0.3.1'
+__version__ = '0.4.0'
 
 LIGHTING_PAGE = 0x59
 REPORTS = {  # LampArray collection usages
@@ -93,18 +93,23 @@ def is_lamparray(sys_path):
         return False
 
 
-def udev_rules():
-    """Static udev rules for the LampArray devices present now.
-
-    Used by the GNOME extension, which cannot rely on /usr/bin/lamplight
-    probe: a rule must never run a user-writable script as root.
-    """
-    rules = set()
+def access_ids():
+    """HID IDs (BUS:VENDOR:PRODUCT) of the LampArray devices present now."""
+    ids = set()
     for sys_path in glob.glob('/sys/class/hidraw/hidraw*'):
         if is_lamparray(sys_path):
             hid = os.path.basename(os.path.realpath(os.path.join(sys_path, 'device')))
-            rules.add(f'SUBSYSTEM=="hidraw", KERNELS=="{hid.rsplit(".", 1)[0]}.*", TAG+="uaccess"')
-    return sorted(rules)
+            ids.add(hid.rsplit('.', 1)[0])
+    return sorted(ids)
+
+
+def udev_rules():
+    """Static udev rules for the LampArray devices present now.
+
+    The GNOME extension installs the same rules, since a rule must never
+    run a user-writable script (/usr/bin/lamplight probe) as root.
+    """
+    return [f'SUBSYSTEM=="hidraw", KERNELS=="{i}.*", TAG+="uaccess"' for i in access_ids()]
 
 
 def _ioc(nr, size):
@@ -293,6 +298,16 @@ def frame_interval(devices):
 # ---------------------------------------------------------------------------
 
 SCHEMA = 'org.gnome.shell.extensions.lamplight'
+
+# Session bus name of the service. The GNOME extension talks to it here and
+# D-Bus starts the service on the first call.
+BUS_NAME = 'io.github.egeisik35.Lamplight'
+BUS_PATH = '/io/github/egeisik35/Lamplight'
+BUS_XML = f'''<node><interface name="{BUS_NAME}">
+  <method name="AccessIds"><arg type="as" direction="out"/></method>
+  <method name="Rescan"/>
+  <method name="Quit"/>
+</interface></node>'''
 
 # libadwaita accent colors (GNOME 47+)
 ACCENTS = {
@@ -495,6 +510,7 @@ def serve():
         signal_add = GLibUnix.signal_add
     except (ImportError, ValueError):  # GLib < 2.80
         signal_add = GLib.unix_signal_add
+    from gi.repository import Gio
     service = Service()
     loop = GLib.MainLoop()
 
@@ -503,17 +519,81 @@ def serve():
         loop.quit()
         return GLib.SOURCE_REMOVE
 
+    def on_call(_conn, _sender, _path, _iface, method, _params, invocation):
+        if method == 'AccessIds':
+            invocation.return_value(GLib.Variant('(as)', (access_ids(),)))
+            return
+        invocation.return_value(None)
+        if method == 'Rescan':
+            service.rescan()
+        else:  # Quit: the extension was disabled (or the screen locked)
+            stop()
+
+    def on_bus(conn, _name):
+        conn.register_object(BUS_PATH, Gio.DBusNodeInfo.new_for_xml(BUS_XML).interfaces[0],
+                             on_call, None, None)
+
+    def on_lost(_conn, _name):  # another instance runs already
+        print('lamplight: service already running', file=sys.stderr, flush=True)
+        loop.quit()
+
+    Gio.bus_own_name(Gio.BusType.SESSION, BUS_NAME, Gio.BusNameOwnerFlags.NONE,
+                     on_bus, None, on_lost)
     for sig in (2, 15):  # SIGINT, SIGTERM: stop and keep the last colors
         signal_add(GLib.PRIORITY_DEFAULT, sig, stop)
     loop.run()
     return 0
 
 
+def setup():
+    """After pip install: let D-Bus start the service, install the schema.
+
+    Package installs (make, AUR) ship both system-wide and skip this.
+    """
+    import shutil
+    import subprocess
+    exe = os.path.abspath(sys.argv[0])
+    data = os.environ.get('XDG_DATA_HOME') or os.path.expanduser('~/.local/share')
+    xml = f'{SCHEMA}.gschema.xml'
+    here = os.path.dirname(os.path.abspath(__file__))
+    # pip puts data files in <prefix>/share, the module in <prefix>/lib/pythonX.Y/site-packages
+    found = [p for p in (os.path.join(here, '../../../share/glib-2.0/schemas', xml),
+                         os.path.join(here, 'data', xml)) if os.path.exists(p)]
+    if not found:
+        print(f'Error: {xml} not found next to {here}', file=sys.stderr)
+        return 1
+    schemas = os.path.join(data, 'glib-2.0/schemas')
+    os.makedirs(schemas, exist_ok=True)
+    if os.path.realpath(found[0]) != os.path.realpath(os.path.join(schemas, xml)):
+        shutil.copy(found[0], schemas)
+    subprocess.run(['glib-compile-schemas', schemas], check=True)
+    services = os.path.join(data, 'dbus-1/services')
+    os.makedirs(services, exist_ok=True)
+    with open(os.path.join(services, f'{BUS_NAME}.service'), 'w') as f:
+        f.write(f'[D-BUS Service]\nName={BUS_NAME}\nExec={exe} service\n')
+    try:
+        import gi
+        gi.require_version('Gio', '2.0')
+        from gi.repository import Gio
+        bus = Gio.bus_get_sync(Gio.BusType.SESSION)
+        # Make the bus see the new file now (dbus-broker does not watch for it).
+        bus.call_sync('org.freedesktop.DBus', '/org/freedesktop/DBus', 'org.freedesktop.DBus',
+                      'ReloadConfig', None, None, 0, -1, None)
+        # Start it now, so an enabled extension does not wait for the next login.
+        bus.call_sync(BUS_NAME, BUS_PATH, BUS_NAME, 'Rescan', None, None, 0, -1, None)
+    except Exception as e:
+        print(f'Error: could not start the service: {e}', file=sys.stderr)
+        return 1
+    print(f'Done. D-Bus now starts "{exe} service" when the GNOME extension asks for it.')
+    return 0
+
+
 def main(argv=None):
     p = argparse.ArgumentParser(prog='lamplight', description=__doc__.splitlines()[0])
     p.add_argument('--version', action='version', version=f'%(prog)s {__version__}')
-    p.add_argument('command', choices=['info', 'service', 'probe', 'udev-rules'] + MODES,
-                   help='info, service (background, follows settings), probe SYSPATH (udev), '
+    p.add_argument('command', choices=['info', 'service', 'setup', 'probe', 'udev-rules'] + MODES,
+                   help='info, service (background, follows settings), setup (after pip '
+                        'install, for the GNOME extension), probe SYSPATH (udev), '
                         'udev-rules (static rules for present devices), or a lighting mode')
     p.add_argument('syspath', nargs='?', help='probe only: /sys path of a hidraw device')
     p.add_argument('-c', '--color', action='append', metavar='RRGGBB',
@@ -528,6 +608,8 @@ def main(argv=None):
         return 0 if args.syspath and is_lamparray(args.syspath) else 1
     if args.command == 'service':
         return serve()
+    if args.command == 'setup':
+        return setup()
     if args.command == 'udev-rules':
         rules = udev_rules()
         print('\n'.join(rules))

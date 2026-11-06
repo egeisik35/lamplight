@@ -8,7 +8,6 @@
 
 import Clutter from 'gi://Clutter';
 import Gio from 'gi://Gio';
-import GLib from 'gi://GLib';
 import GObject from 'gi://GObject';
 import St from 'gi://St';
 
@@ -18,7 +17,7 @@ import * as PopupMenu from 'resource:///org/gnome/shell/ui/popupMenu.js';
 import {QuickMenuToggle, SystemIndicator} from 'resource:///org/gnome/shell/ui/quickSettings.js';
 import {Slider} from 'resource:///org/gnome/shell/ui/slider.js';
 
-import {backendCommand, setupAccess} from './common.js';
+import {callBackend, setupAccess, stopBackend} from './common.js';
 
 const SCHEMA = 'org.gnome.shell.extensions.lamplight';
 
@@ -50,7 +49,7 @@ const DIRECTIONS = {
 const SWATCHES = ['ff0000', 'ff5500', 'ffcc00', '00ff00', '00ffff', '0000ff', '8000ff', 'ff2090', 'ffffff'];
 const STATUS = {
     'no-access': 'Needs one-time setup',
-    'no-python': 'Needs Python 3 with PyGObject',
+    'no-backend': 'Needs the lamplight service',
 };
 
 const MIN_PERIOD = 0.5, MAX_PERIOD = 20;
@@ -266,68 +265,30 @@ class Indicator extends SystemIndicator {
 
 export default class LamplightExtension extends Extension {
     enable() {
-        this._packaged = !!Gio.SettingsSchemaSource.get_default().lookup(SCHEMA, true);
-        this._settings = this._packaged
+        // The schema is system-wide with a package install or after
+        // "lamplight setup"; otherwise use the copy in the extension.
+        this._settings = Gio.SettingsSchemaSource.get_default().lookup(SCHEMA, true)
             ? new Gio.Settings({schema_id: SCHEMA}) : this.getSettings();
         this._indicator = new Indicator(this._settings, this);
         Main.panel.statusArea.quickSettings.addExternalIndicator(this._indicator);
-        this._restarts = 0;
-        if (!this._packaged)
-            this._startService();
+        // Starts the service if needed, and picks up devices plugged in meanwhile.
+        callBackend('Rescan', reply => {
+            if (!reply)
+                this._settings?.set_string('status', 'no-backend');
+        });
     }
 
     disable() {
-        if (this._restartId)
-            GLib.source_remove(this._restartId);
-        this._restartId = null;
-        const service = this._service;
-        this._service = null;
-        // SIGTERM: the service exits, keeping the colors. When this runs because
-        // the screen locked, it turns the lights off first if the user chose
+        // The service exits, keeping the colors. When this runs because the
+        // screen locked, it turns the lights off first if the user chose
         // "turn off with screen".
-        service?.send_signal(15);
+        stopBackend();
         this._indicator?.destroy();
         this._indicator = null;
         this._settings = null;
     }
 
-    _startService() {
-        const argv = backendCommand(this.path);
-        if (argv.includes(null)) {
-            this._settings.set_string('status', 'no-python');
-            return;
-        }
-        const launcher = new Gio.SubprocessLauncher({
-            flags: Gio.SubprocessFlags.STDOUT_SILENCE | Gio.SubprocessFlags.STDERR_PIPE,
-        });
-        launcher.setenv('GSETTINGS_SCHEMA_DIR', GLib.build_filenamev([this.path, 'schemas']), true);
-        const proc = launcher.spawnv([...argv, 'service']);
-        this._service = proc;
-        proc.communicate_utf8_async(null, null, (p, res) => {
-            const [, , stderr] = p.communicate_utf8_finish(res);
-            if (this._service !== p)
-                return;  // stopped by disable()
-            this._service = null;
-            console.warn(`lamplight: service exited: ${stderr}`);
-            if (stderr.includes('PyGObject')) {
-                this._settings.set_string('status', 'no-python');
-                return;
-            }
-            if (this._restarts++ < 5) {
-                this._restartId = GLib.timeout_add_seconds(GLib.PRIORITY_DEFAULT, 3, () => {
-                    this._restartId = null;
-                    this._startService();
-                    return GLib.SOURCE_REMOVE;
-                });
-            }
-        });
-    }
-
     setupAccess() {
-        setupAccess(this.path, () => {
-            Main.notify('Lighting', 'Keyboard access is set up.');
-            this._restarts = 0;
-            this._service?.send_signal(15);  // restart the bundled service to pick up access
-        });
+        setupAccess(() => Main.notify('Lighting', 'Keyboard access is set up.'));
     }
 }

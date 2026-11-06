@@ -1,8 +1,7 @@
 // Shared by extension.js (GNOME Shell) and prefs.js (settings window).
-// Only Gio/GLib here: no Shell or Gtk imports, so both processes can load it.
+// Only Gio here: no Shell or Gtk imports, so both processes can load it.
 
 import Gio from 'gi://Gio';
-import GLib from 'gi://GLib';
 
 export const RULES_FILE = '/etc/udev/rules.d/70-lamplight-extension.rules';
 
@@ -26,29 +25,45 @@ udevadm control --reload-rules
 udevadm trigger --subsystem-match=hidraw
 udevadm settle`;
 
-// The backend: the copy bundled with the extension (store install), or the
-// lamplight package. It is Python because it needs ioctl() on /dev/hidraw
-// (HID feature reports), which GJS cannot call.
-export function backendCommand(extensionPath) {
-    const bundled = GLib.build_filenamev([extensionPath, 'lamplight.py']);
-    return GLib.file_test(bundled, GLib.FileTest.EXISTS)
-        ? [GLib.find_program_in_path('python3'), bundled]
-        : [GLib.find_program_in_path('lamplight')];
+// The backend is the lamplight service (pip package lamplight-hid, or the
+// distro package) on the session bus. It is Python because it needs ioctl()
+// on /dev/hidraw (HID feature reports), which GJS cannot call. Any call
+// starts it through D-Bus activation.
+const BUS_NAME = 'io.github.egeisik35.Lamplight';
+const BUS_PATH = '/io/github/egeisik35/Lamplight';
+
+export function callBackend(method, onDone = () => {}) {
+    Gio.DBus.session.call(BUS_NAME, BUS_PATH, BUS_NAME, method, null, null,
+        Gio.DBusCallFlags.NONE, -1, null, (conn, res) => {
+            let reply = null;
+            try {
+                reply = conn.call_finish(res);
+            } catch (e) {
+                console.warn(`lamplight: ${method}: ${e.message}`);
+            }
+            onDone(reply);
+        });
+}
+
+// Stop the service if it runs; do not start it just to stop it.
+export function stopBackend() {
+    Gio.DBus.session.call(BUS_NAME, BUS_PATH, BUS_NAME, 'Quit', null, null,
+        Gio.DBusCallFlags.NO_AUTO_START, -1, null, (conn, res) => {
+            try {
+                conn.call_finish(res);
+            } catch {
+                // not running: nothing to stop
+            }
+        });
 }
 
 // One-time root step, only on explicit user action: allow the logged-in
 // user to use the LampArray devices present now. Static rules only; nothing
 // runs as root afterwards. onDone runs after a successful setup.
-export function setupAccess(extensionPath, onDone) {
-    const argv = backendCommand(extensionPath);
-    if (argv.includes(null))
-        return;
-    const rules = Gio.Subprocess.new([...argv, 'udev-rules'],
-        Gio.SubprocessFlags.STDOUT_PIPE | Gio.SubprocessFlags.STDERR_SILENCE);
-    rules.communicate_utf8_async(null, null, (p, res) => {
-        const [, out] = p.communicate_utf8_finish(res);
-        const ids = [...(out ?? '').matchAll(/KERNELS=="([0-9A-F:]+)\.\*"/g)].map(m => m[1]);
-        if (!p.get_successful() || !ids.length)
+export function setupAccess(onDone) {
+    callBackend('AccessIds', reply => {
+        const [ids] = reply?.deepUnpack() ?? [[]];
+        if (!ids.length)
             return;
         const install = Gio.Subprocess.new(
             ['pkexec', '/bin/sh', '-c', INSTALL_RULES, 'sh', ...ids], Gio.SubprocessFlags.NONE);
@@ -58,6 +73,7 @@ export function setupAccess(extensionPath, onDone) {
             } catch {
                 return;  // cancelled password prompt: nothing to do
             }
+            callBackend('Rescan');
             onDone();
         });
     });

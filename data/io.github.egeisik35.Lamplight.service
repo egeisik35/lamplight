@@ -1,0 +1,4 @@
+[D-BUS Service]
+Name=io.github.egeisik35.Lamplight
+Exec=@BINDIR@/lamplight service
+SystemdService=lamplight.service

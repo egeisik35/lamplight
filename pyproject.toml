@@ -1,0 +1,29 @@
+[build-system]
+requires = ["setuptools>=64"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "lamplight-hid"
+dynamic = ["version"]
+description = "Keyboard RGB lighting for Windows Dynamic Lighting (HID LampArray) devices on Linux"
+readme = "README.md"
+license = "MIT"
+requires-python = ">=3.9"
+# The service also needs PyGObject. It is not listed: pip would build it from
+# source. Use the distro's (pipx install --system-site-packages).
+classifiers = ["Operating System :: POSIX :: Linux"]
+
+[project.urls]
+Homepage = "https://github.com/egeisik35/lamplight"
+
+[project.scripts]
+lamplight = "lamplight:main"
+
+[tool.setuptools]
+py-modules = ["lamplight"]
+
+[tool.setuptools.dynamic]
+version = {attr = "lamplight.__version__"}
+
+[tool.setuptools.data-files]
+"share/glib-2.0/schemas" = ["data/org.gnome.shell.extensions.lamplight.gschema.xml"]

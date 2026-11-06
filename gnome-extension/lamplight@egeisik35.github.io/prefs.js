@@ -12,6 +12,15 @@ import {ExtensionPreferences} from 'resource:///org/gnome/Shell/Extensions/js/ex
 
 import {setupAccess} from './common.js';
 
+const VENV = '~/.local/share/lamplight/venv';
+// The service release that matches this extension version.
+const installCommand = version => {
+    const wheel = `https://github.com/egeisik35/lamplight/releases/download/v${version}/` +
+        `lamplight_hid-${version}-py3-none-any.whl`;
+    return `python3 -m venv --system-site-packages ${VENV} && ` +
+        `${VENV}/bin/pip install ${wheel} && ${VENV}/bin/lamplight setup`;
+};
+
 const MODES = [
     ['solid', 'Solid color'],
     ['accent', 'Match accent color'],
@@ -243,12 +252,29 @@ export default class LamplightPreferences extends ExtensionPreferences {
         const statusRow = new Adw.ActionRow({title: 'Keyboard access needed'});
         const setupButton = new Gtk.Button({label: 'Set Up…', valign: Gtk.Align.CENTER});
         setupButton.add_css_class('suggested-action');
-        setupButton.connect('clicked', () => setupAccess(this.path, () => {
-            statusRow.subtitle = 'Done. The lights respond within a few seconds.';
+        setupButton.connect('clicked', () => setupAccess(() => {
+            statusRow.subtitle = 'Done.';
             setupButton.visible = false;
         }));
         statusRow.add_suffix(setupButton);
         statusGroup.add(statusRow);
+        // The service is a Python package installed with pip. The user runs
+        // this command in a terminal; nothing is installed from here.
+        const command = installCommand(this.metadata['version-name']);
+        const installRow = new Adw.ActionRow({
+            title: command,
+            subtitle: 'Run this in a terminal. Needs PyGObject (python3-gi, python3-gobject or python-gobject).',
+            title_selectable: true,
+            use_markup: false,
+        });
+        installRow.add_css_class('monospace');
+        const copyButton = new Gtk.Button({icon_name: 'edit-copy-symbolic',
+            tooltip_text: 'Copy', valign: Gtk.Align.CENTER});
+        copyButton.add_css_class('flat');
+        copyButton.connect('clicked', () => window.get_clipboard().set_content(
+            Gdk.ContentProvider.new_for_value(command)));
+        installRow.add_suffix(copyButton);
+        statusGroup.add(installRow);
         page.add(statusGroup);
 
         const previewGroup = new Adw.PreferencesGroup();
@@ -355,15 +381,16 @@ export default class LamplightPreferences extends ExtensionPreferences {
             syncing = true;
             statusGroup.visible = status !== '';
             setupButton.visible = status === 'no-access';
+            installRow.visible = status === 'no-backend';
             statusRow.title = {
                 'no-access': 'Keyboard access needed',
                 'no-device': 'No compatible lighting found',
-                'no-python': 'Python 3 with PyGObject is needed',
+                'no-backend': 'The lamplight service is not installed',
             }[status] ?? '';
             statusRow.subtitle = {
                 'no-access': 'One-time setup, asks for your password',
                 'no-device': 'Lamplight controls devices with Windows Dynamic Lighting (HID LampArray)',
-                'no-python': 'Install python3-gi (Debian/Ubuntu) or python3-gobject (Fedora)',
+                'no-backend': 'Install it once with the command below',
             }[status] ?? '';
             effect.selected = MODES.findIndex(([m]) => m === mode);
             color.visible = USES_COLOR.has(mode);

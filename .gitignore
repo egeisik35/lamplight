@@ -8,3 +8,6 @@ __pycache__/
 *.tar.gz
 .SRCINFO.bak
 *.shell-extension.zip
+build/
+*.egg-info/
+dist/
