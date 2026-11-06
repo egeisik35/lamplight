@@ -159,12 +159,12 @@ class LightingToggle extends QuickMenuToggle {
         const sub = item.menu;
         const open = sub.open.bind(sub);
         sub._needsScrollbar = () => true;
-        sub.connect('open-state-changed', (_m, isOpen) => {
+        sub.connectObject('open-state-changed', (_m, isOpen) => {
             if (!isOpen && this._picking === item) {
                 this._picking = null;
                 this.sync();
             }
-        });
+        }, this);
         sub.open = params => {
             this._picking = item;
             this.sync();
@@ -177,6 +177,18 @@ class LightingToggle extends QuickMenuToggle {
             sub.actor.style = `max-height: ${Math.max(96 * scale, spare) / scale}px;`;
             return open(params);
         };
+    }
+
+    destroy() {
+        // Stop syncing first: closing a submenu while it is destroyed calls sync().
+        this._settings.disconnectObject(this);
+        this._picking = null;
+        for (const row of [this._modeMenu, this._color, this._color2,
+            this._brightness, this._speed, this._direction])
+            row.destroy();
+        this._modeMenu = this._color = this._color2 = null;
+        this._brightness = this._speed = this._direction = null;
+        super.destroy();
     }
 
     _set(key, value) {
@@ -292,15 +304,12 @@ export default class LamplightExtension extends Extension {
         const proc = launcher.spawnv([...argv, 'service']);
         this._service = proc;
         proc.communicate_utf8_async(null, null, (p, res) => {
-            let stderr = '';
-            try {
-                [, , stderr] = p.communicate_utf8_finish(res);
-            } catch {}
+            const [, , stderr] = p.communicate_utf8_finish(res);
             if (this._service !== p)
                 return;  // stopped by disable()
             this._service = null;
             console.warn(`lamplight: service exited: ${stderr}`);
-            if (stderr?.includes('PyGObject')) {
+            if (stderr.includes('PyGObject')) {
                 this._settings.set_string('status', 'no-python');
                 return;
             }

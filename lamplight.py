@@ -16,7 +16,7 @@ import struct
 import sys
 import time
 
-__version__ = '0.3.0'
+__version__ = '0.3.1'
 
 LIGHTING_PAGE = 0x59
 REPORTS = {  # LampArray collection usages
@@ -369,8 +369,7 @@ class Service:
         Gio.bus_get_sync(Gio.BusType.SYSTEM).signal_subscribe(
             'org.freedesktop.login1', 'org.freedesktop.login1.Manager', 'PrepareForSleep',
             '/org/freedesktop/login1', None, Gio.DBusSignalFlags.NONE, self.on_sleep)
-        # ponytail: polling every 10 s covers hotplug; use udev monitoring if
-        # people plug lighting devices in and out often.
+        # Polling every 10 s covers hotplug and newly granted access.
         GLib.timeout_add_seconds(10, self.rescan_if_missing)
         self.rescan()
 
@@ -391,7 +390,7 @@ class Service:
     def on_level(self, level):
         """Firmware level changed (Fn keys, GNOME tile, or our own request)."""
         self.level = level
-        # ponytail: GNOME's idle dimming also lands here, so a fine slider
+        # GNOME's idle dimming also lands here, so a fine slider
         # value like 0.8 can round up to the full level after idle.
         if hardware_level(self.settings.get_double('brightness'), self.max_level) != level:
             self.settings.set_double('brightness', level / self.max_level)
