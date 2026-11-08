@@ -1,10 +1,7 @@
 // Lamplight: Quick Settings tile for HID LampArray (Dynamic Lighting) devices.
 // The lamplight service drives the hardware from the shared
 // org.gnome.shell.extensions.lamplight settings; this tile only edits them.
-// With the lamplight package installed, systemd runs that service. Without
-// it (installed from extensions.gnome.org), the extension runs the bundled
-// lamplight.py itself. That part is Python because it needs ioctl() on
-// /dev/hidraw (HID feature reports), which GJS cannot call.
+// The service is started over D-Bus (see common.js).
 
 import Clutter from 'gi://Clutter';
 import Gio from 'gi://Gio';
